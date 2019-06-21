@@ -4,12 +4,12 @@ import math
 import matplotlib.pyplot as plt
 import sympy as sm
 import scipy.optimize as opti
-P_0 = 114.7*(137.9/20)  # Total/Stagnation/Chamber Pressure (kPa)
+P_0 = 16.7*(137.9/20)  # Total/Stagnation/Chamber Pressure (kPa)
 T_0 = 10  # Total/Stagnation/Chamber Temperature (C)
 P_amb = 14.7*(137.9/20)  # Ambient Pressure (kPa)
 
 d_star = 0.3  # Throat diameter (mm) (1/64" = 0.397mm)
-expansion_ratio = 1.8048  # 1.8048 for ideal expansion at 114.7 psi supply, 2.2447 for 164.7
+expansion_ratio = 1.3225  # 1.8048 for ideal expansion at 114.7 psi supply, 2.2447 for 164.7, 1.3225 for 0.2mm and 64.7 psi, 1.1235 for 0.3 and 44.7 psi
 half_angle = 10  # Conical Nozzle expansion angle (degrees)
 
 ## ---- OPTIONS ----------------------------------
@@ -178,13 +178,13 @@ print('Chamber Temperature: ', T_0, ' K')
 print('Mass Flow Rate: ' +  str(round(m_dot*1000, 4)) + ' g/s')
 print('Volumetric Flow Rate: ' + str(round(Q_scfm, 3)) + ' scfm')
 print('')
-print('Throat Diameter: ' + str(round(d_star*1000, 2)) + ' mm  (' + str(round(d_star/0.0254, 3)) + ' in)')
+print('Throat Diameter: ' + str(round(d_star*1000, 3)) + ' mm  (' + str(round(d_star/0.0254, 3)) + ' in)')
 print('Throat Pressure: ' + str(round(P_star/1000, 2)) + ' kPa  (' + str(round(P_star/6894.76, 0)) + ' psi)')
 print('Throat Temperature: ' + str(round(T_star, 1)) + ' K')
 print('Throat Velocity: ' + str(round(a_star, 1)) + ' m/s')
 print('Throat Reynold\'s Number (Diameter): ' + str(round(Re_star, 0)))
 print('')
-print('Exit Diameter: ' + str(round(d_exit*1000, 2)) + ' mm  (' + str(round(d_exit/0.0254, 3)) + ' in)')
+print('Exit Diameter: ' + str(round(d_exit*1000, 3)) + ' mm  (' + str(round(d_exit/0.0254, 3)) + ' in)')
 print('Exit Temperature: ' + str(round(T_exit, 1)) + ' K')
 print('Exit Pressure: ' + str(round(P_exit/1000, 3)) + ' kPa  (' + str(round(P_exit/6894.76, 3)) + ' psi)')
 # print('Entrance Mach Number: ' + str(round(M_exit_sub, 3)))
