@@ -37,8 +37,10 @@ def nozzle(P_0, T_0, P_amb, d_star, expansion_ratio, half_angle, gas_type):
 
     # Critical (Sonic) Conditions (Isentropic)
     A_star = np.pi*(d_star**2)/4  # Throat area
-    T_star = T_0/(1 + (k-1)/2)
-    P_star = P_0*(T_0/T_star)**(-k/(k-1))
+    # T_star = T_0/(1 + (k-1)/2)
+    T_star = T_0*(2/(k+1))
+    # P_star = P_0*(T_0/T_star)**(-k/(k-1))
+    P_star = P_0*(2/(k+1))**(k/(k-1))
     rho_star = P_star/(R*T_star)
     a_star = np.sqrt(k*R*T_star)
     mu_star = (2*(10**-9)*(T_star**3) - 5*(10**-6)*(T_star**2) + 0.007*T_star + 0.0613)*(10**-5)
@@ -64,8 +66,8 @@ def nozzle(P_0, T_0, P_amb, d_star, expansion_ratio, half_angle, gas_type):
     x0 = np.array([0.00001, 20])
     sol = opti.fsolve(objective, x0, maxfev=100000, full_output=False, xtol=0.000000001)
 
-    M_exit_sub = np.sqrt(sol[0])  # Subsonic exit mach no.
-    M_exit_sup = np.sqrt(sol[1])  # Supersonic exit mach no.
+    M_exit_sub = np.sqrt(sol[0])  # Subsonic mach no.
+    M_exit_sup = np.sqrt(sol[1])  # Supersonic mach no.
 
 
     ## --------------------------------------------------------------------------------
@@ -106,5 +108,7 @@ def nozzle(P_0, T_0, P_amb, d_star, expansion_ratio, half_angle, gas_type):
 
     # Reynold's Number at the throat
     Re_star = rho_star*a_star*d_star/mu_star
+
+
 
     return m_dot, P_star, T_star, a_star, Re_star, M_exit_sub, M_exit_sup, P_exit, T_exit, v_exit, a_exit, F, F_mdotv, F_pdiff

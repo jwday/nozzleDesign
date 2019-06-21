@@ -5,7 +5,7 @@ import numpy as np
 
 ## ---- OPTIONS ----------------------------------
 
-P_0 = 114.7  # Total/Stagnation/Chamber Pressure (psi)
+P_0 = 44.7  # Total/Stagnation/Chamber Pressure (psi)
 T_0 = 10  # Total/Stagnation/Chamber Temperature (C)
 P_amb = 14.7  # Ambient Pressure (psi)
 
@@ -15,19 +15,23 @@ half_angle = 10  # Conical Nozzle expansion angle (degrees)
 
 # Choices: R236fa, R134a, N2, CO2
 gas_type = 'CO2'
+k = 1.289
 
 
 ## --------------------------------------------------------------------------------
 
 
-list_of_P0 = list(np.linspace (44.7, 44.7, 1))
+list_of_P0 = list(np.linspace (64.7, 14.7, 30))
 list_of_mdots = []
 list_of_P_exit_subs = []
-list_of_P_exit_supers = []
+list_of_P_exit_super = []
 list_of_M_exit_sub = []
-list_of_M_exit_supers = []
+list_of_M_exit_super = []
 list_of_P_stars = []
 list_of_thrusts = []
+list_of_pressure_ratios_super = []
+list_of_pressure_ratios_sub = []
+
 
 
 for i in range(len(list_of_P0)):
@@ -36,16 +40,18 @@ for i in range(len(list_of_P0)):
     m_dot, P_star, T_star, a_star, Re_star, M_exit_sub, M_exit_sup, P_exit, T_exit, v_exit, a_exit, F, F_mdotv, F_pdiff = nozzle(P, T_0, P_amb, d_star, expansion_ratio, half_angle, gas_type)
     m_dot *= 1000
     P_exit_sub = P_exit[0]/6894.76
-    P_exit_super = P_exit[1]/6894.76
+    P_exit_sup = P_exit[1]/6894.76
     P_star /= 6894.76
 
     list_of_mdots.append(m_dot)
     list_of_P_exit_subs.append(P_exit_sub)
-    list_of_P_exit_supers.append(P_exit_super)
+    list_of_P_exit_super.append(P_exit_sup)
     list_of_M_exit_sub.append(M_exit_sub)
-    list_of_M_exit_supers.append(M_exit_sup)
+    list_of_M_exit_super.append(M_exit_sup)
     list_of_P_stars.append(P_star)
     list_of_thrusts.append(F)
+    list_of_pressure_ratios_sub.append(P_exit_sub/P_0)
+    list_of_pressure_ratios_super.append(P_exit_sup/P_0)
 
 # out =  [('Init Pressure (psi)', list_of_P0),
 #         ('Mass Flow Rate (g/s)', list_of_mdots),
@@ -55,7 +61,12 @@ for i in range(len(list_of_P0)):
 out =  {'Init Pressure (psi)': list_of_P0,
         'Mass Flow Rate (g/s)': list_of_mdots,
         'Throat Pressure (psi)': list_of_P_stars,
-        'Exit Pressure (psi)': list_of_P_exit_supers,
+        'Exit Pressure (sub, psi)': list_of_P_exit_subs,
+        'Exit Pressure (super, psi)': list_of_P_exit_super,
+        'Pressure Ratio (sub)': list_of_pressure_ratios_sub,
+        'Pressure Ratio (super)': list_of_pressure_ratios_super,
+        'Exit Mach Number (sub)': list_of_M_exit_sub,
+        'Exit Mach Number (super)':list_of_M_exit_super,
         'Thrust (N)': F}
 
 df = pd.DataFrame.from_dict(out)
