@@ -29,6 +29,8 @@ for i in t:
             n += 1
             pulse_thrust.append( i*(-max_pulse_thrust/thrust_pulse_duration) + max_pulse_thrust*(2*n+1))  # To catch the top of the new thrust curve at the beginning of each pulse
 
+pulse_thrust[-1] = 0
 
 plt.plot(t, pulse_thrust)
+plt.plot([t[0], t[-1]], [min_const_thrust, min_const_thrust])
 plt.show()
