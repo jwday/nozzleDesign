@@ -59,11 +59,6 @@ def nozzle(P_t, T_t, P_amb, d_star, expansion_ratio, half_angle, gas_type):
     Q = P/L  # aka (k+1)/(k-1)
     S = (A_exit/A_star)**2
     Y = np.sqrt(k/R)
-    m_dot = ( A_star*P_t/np.sqrt(T_t) )*Y*( P )**(-Q/2)  # CHOKED mass flow rate (kg/s), based entirely on stagnation conditions
-
-    # def mach_area_func(M):
-    #     f = (P**(Q/2))*M/( (1 + L*M**2)**(Q/2) )  # f(M) = A*/A
-    #     return f
     
     def pres_ratio(M):
         f = (1 + L*M**2)**(-W)  # P/P_t
@@ -153,9 +148,6 @@ def nozzle(P_t, T_t, P_amb, d_star, expansion_ratio, half_angle, gas_type):
 
 
     ## --------------------------------------------------------------------------------    
-    #m_dot = ( A_exit*P_t/np.sqrt(T_t) )*Y*M_exit*( 1 + L**M_exit**2 )**(-Q/2)
-    #m_dot2 = ( A_star*P_t/np.sqrt(T_t) )*Y*( P )**(-Q/2)
-    
     Z = 1 + L*M_exit**2
     T_exit = T_t/Z  # Exit temperature (K)
     a_exit = np.sqrt(k*R*T_exit)  # Exit speed of sound (m/s)
@@ -202,4 +194,4 @@ def nozzle(P_t, T_t, P_amb, d_star, expansion_ratio, half_angle, gas_type):
 
 
     # return m_dot, P_star, T_star, a_star, Re_star, M_crit_sub, M_crit_sup, P_exit, T_exit, v_exit, a_exit, F, F_mdotv, F_pdiff
-    return m_dot, M_crit_sub, M_crit_sup, PR_crit_sub, PR_crit_sup, PR_exit_shock, M_exit_behindshock, M_exit, P_exit, v_exit, F, F_mdotv, F_pdiff
+    return m_dot, M_crit_sub, M_crit_sup, PR_crit_sub, PR_crit_sup, PR_exit_shock, M_exit_behindshock, M_exit, P_exit/6894.76, v_exit, F, F_mdotv, F_pdiff
