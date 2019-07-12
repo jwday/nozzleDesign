@@ -22,7 +22,7 @@ def nozzle(P_t, T_t, P_amb, d_star, expansion_ratio, half_angle, gas_type):
         
     if gas_type == 'CO2':
         k = 1.289
-        R = 8.314/0.04401
+        R = 8.314/0.04401  # Specific gas constant (J/kg-K)
 
 
     ## --------------------------------------------------------------------------------
@@ -31,7 +31,7 @@ def nozzle(P_t, T_t, P_amb, d_star, expansion_ratio, half_angle, gas_type):
     # Unit Conversion
     d_star /= 1000  # Throat Diameter (m)
     P_t *= (137.9/20)*1000  # Total initial pressure (Pa)
-    T_t += 273.15  # Total temperature (K)
+    # T_t += 273.15  # Total temperature (K)
     rho_t = P_t/(R*T_t)  # Total density (kg/m^3)
     P_amb *= (137.9/20)*1000  # Ambient pressure (Pa)
     a_0 = np.sqrt(k*R*T_t)
@@ -152,8 +152,8 @@ def nozzle(P_t, T_t, P_amb, d_star, expansion_ratio, half_angle, gas_type):
     T_exit = T_t/Z  # Exit temperature (K)
     a_exit = np.sqrt(k*R*T_exit)  # Exit speed of sound (m/s)
     v_exit = M_exit*a_exit  # Exit velocity (m/s)
-    rho_exit = P_exit/(R*T_exit)
-    m_dot = rho_exit*A_exit*v_exit
+    rho_exit = P_exit/(R*T_exit)  # Units of kg/m^3
+    m_dot = rho_exit*A_exit*v_exit  # Units of kg
 
 
     # Q_scfm = (m_dot/1.98)*35.3147*60  # Volumetric flow rate (m^3/s)

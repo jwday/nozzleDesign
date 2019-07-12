@@ -10,6 +10,9 @@ min_const_thrust = req_impulse/max_time  # N
 
 num_thrust_pulses = 4
 thrust_pulse_impulse = req_impulse/num_thrust_pulses  # This is equivalent to the area under the curve
+max_inlet_pres = 60  # Maximum nozzle inlet pressure (psi), which would actually be the maximum plenum pressure
+min_inlet_pres = 30  # MInimum nozzle inlet pressure (psi)
+
 pulse_startstop_times = np.linspace(0, max_time, 2*num_thrust_pulses)
 pulse_startstop_times = np.append(pulse_startstop_times, [60])
 

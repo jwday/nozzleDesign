@@ -4,11 +4,11 @@ import math
 import matplotlib.pyplot as plt
 import sympy as sm
 import scipy.optimize as opti
-P_0 = 16.7*(137.9/20)  # Total/Stagnation/Chamber Pressure (kPa)
+P_0 = 64.7*(137.9/20)  # Total/Stagnation/Chamber Pressure (kPa)
 T_0 = 10  # Total/Stagnation/Chamber Temperature (C)
 P_amb = 14.7*(137.9/20)  # Ambient Pressure (kPa)
 
-d_star = 0.3  # Throat diameter (mm) (1/64" = 0.397mm)
+d_star = 0.5  # Throat diameter (mm) (1/64" = 0.397mm)
 expansion_ratio = 1.3225  # 1.8048 for ideal expansion at 114.7 psi supply, 2.2447 for 164.7, 1.3225 for 0.2mm and 64.7 psi, 1.1235 for 0.3 and 44.7 psi
 half_angle = 10  # Conical Nozzle expansion angle (degrees)
 
