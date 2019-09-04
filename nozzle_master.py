@@ -14,7 +14,7 @@ import sys
 # Gas initial conditions
 P_t_init = 104.7  # Max Total Pressure (psia)
 P_amb = 14.7  # Ambient Pressure (psia)
-T_t_init = 10 + 273.15  # Total Temperature (K)
+T_t_init = -10 + 273.15  # Total Temperature (K)
 vol = 30/10**6  # Units of m^3
 dia = 2*(vol*(3/4)/math.pi)**(1/3)
 
@@ -22,7 +22,7 @@ dia = 2*(vol*(3/4)/math.pi)**(1/3)
 time_step = 0.05
 
 # Nozzle geometry
-d_star = 0.3  # Throat diameter (mm) (1/64" = 0.397mm)
+d_star = 0.6  # Throat diameter (mm) (1/64" = 0.397mm)
 expansion_ratio = 1.3225  # 1.8048 for ideal expansion at 114.7 psi supply, 2.2447 for 164.7, 1.3225 for 0.2mm and 64.7 psi, 1.1235 for 0.3 and 44.7 psi
 half_angle = 10  # Conical Nozzle expansion angle (degrees)
 
