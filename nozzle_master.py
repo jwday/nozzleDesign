@@ -12,18 +12,22 @@ import sys
 ## ---- OPTIONS --------------------------------------------------------------------
 
 # Gas initial conditions
-P_t_init = 104.7  # Max Total Pressure (psia)
+P_t_init = 114.7  # Max Total Pressure (psia)
 P_amb = 14.7  # Ambient Pressure (psia)
 T_t_init = -10 + 273.15  # Total Temperature (K)
-vol = 30/10**6  # Units of m^3
-dia = 2*(vol*(3/4)/math.pi)**(1/3)
+vol = 30/10**6  # Units of m^3 (cm^3 / 10^6)
+dia = 2*(vol*(3/4)/math.pi)**(1/3)  # Units of m
 
 # no_of_points = 30
-time_step = 0.05
+time_step = 0.001
 
 # Nozzle geometry
 d_star = 0.6  # Throat diameter (mm) (1/64" = 0.397mm)
 expansion_ratio = 1.3225  # 1.8048 for ideal expansion at 114.7 psi supply, 2.2447 for 164.7, 1.3225 for 0.2mm and 64.7 psi, 1.1235 for 0.3 and 44.7 psi
+# # PSI ----- Exp. Ratio
+# # 114.7 --- 1.8048
+# # 104.7 --- 1.3225
+# # 
 half_angle = 10  # Conical Nozzle expansion angle (degrees)
 
 
@@ -62,7 +66,7 @@ m_gas = [m_init]
 # 5. Repeat 1-4 until P < 35
 
 # for P_t in list_of_P_ts:
-while list_of_P_ts[-1] > 15:
+while list_of_P_ts[-1] > P_amb:
 	m_dot, M_crit_sub, M_crit_sup, PR_crit_sub, PR_crit_sup, PR_exit_shock, M_exit_behindshock, M_exit, P_exit, v_exit, F, F_mdotv, F_pdiff = nozzle(list_of_P_ts[-1], list_of_T_ts[-1], P_amb, d_star, expansion_ratio, half_angle, gas_type)
 
 	list_of_mdots.append(m_dot*1000)  # Units of g/s
@@ -173,12 +177,21 @@ for i in range(len(list_of_P_exits)):
 
 
 ## ---- CALC SOME OTHER STUFF ------------------------------------------------------
-cumulative_impulse = [0]
-cumulative_mass = [0]
+cumulative_impulse = []
+cumulative_mass = []
+average_thrust = []
+time_offset = []
 
-for i in range(1,len(time)):
-	cumulative_impulse.append( (time[i]-time[i-1])*np.average([list_of_thrusts[i], list_of_thrusts[i-1]]) + cumulative_impulse[i-1] )
-	cumulative_mass.append( (time[i]-time[i-1])*np.average([list_of_mdots[i], list_of_mdots[i-1]]) + cumulative_mass[i-1] )
+for i in range(0, len(time)-1):
+	time_offset.append( np.average([time[i], time[i+1]]) )
+	if i == 0:
+		cumulative_impulse.append( time_step*np.average([list_of_thrusts[i], list_of_thrusts[i+1]]) )
+		cumulative_mass.append( time_step*np.average([list_of_mdots[i], list_of_mdots[i+1]]) )
+	else:
+		cumulative_impulse.append( time_step*np.average([list_of_thrusts[i], list_of_thrusts[i+1]]) + cumulative_impulse[i-1] )
+		cumulative_mass.append( time_step*np.average([list_of_mdots[i], list_of_mdots[i+1]]) + cumulative_mass[i-1] )
+
+	average_thrust.append( np.average(list_of_thrusts[0:i+1]) )
 
 
 
@@ -205,7 +218,7 @@ out =  {'Time (s)': time,
 		'Pressure Ratio': list_of_pressure_ratios,
 		'Exit Mach Number': list_of_M_exits,
 		'Exit Velocity (m/s)': list_of_v_exits,
-		'Thrust (N)': list_of_thrusts,
+		'Instantaneous Thrust (N)': list_of_thrusts,
 		'': [np.NaN for i in range(len(list_of_P_ts))],
 		'Critical Mach, Sub': list_of_M_crit_subs,
 		'Critical Mach, Sup': list_of_M_crit_sups,
@@ -222,7 +235,7 @@ df = pd.DataFrame.from_dict(out)
 ## ---- PLOT THE STUFF -----------------------------------------------------------
 
 # ---- Plot Pressures and Exit Velocity
-fig1, ax1 = plt.subplots(figsize=(8, 5), dpi=150)
+fig1, ax1 = plt.subplots(figsize=(8, 5), dpi=90)
 
 ax1.set_xlabel('Time (s)', color='#413839')
 ax1.set_ylabel('Pressure (psia)', color='#413839')
@@ -246,23 +259,24 @@ ax1.grid(which='major', axis='both', linestyle='--')
 plt.title('Chamber + Exit Pres. & Exit Velocity for Single Plenum Discharge', y=1.03, color='#413839')
 
 
-# ---- Plot Thrust and Total Impulse
-fig2, ax1 = plt.subplots(figsize=(8, 5), dpi=150)
+# ---- Plot Instantaneous Thrust, Average Thrust, and Total Impulse
+fig2, ax1 = plt.subplots(figsize=(8, 5), dpi=90)
 ax1.set_xlabel('Time (s)', color='#413839')
 ax1.set_ylabel('Thrust (N)', color='#413839')
 ax1.plot(time, list_of_thrusts, color='#1f77b4', label='Thrust (N)')
+ax1.plot(time_offset, average_thrust, color='#ed9926', label='Cumulative Avg Thrust (N)')
 ax1.tick_params(colors='#413839')
 # ax1.set_ylim(0, 0.5)
 
 ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
 
 ax2.set_ylabel('Total Impulse (N-s)', color='#413839')  # we already handled the x-label with ax1
-ax2.plot(time, cumulative_impulse, color='#2ca02c', label='Total Impulse (N-s)')
+ax2.plot(time_offset, cumulative_impulse, color='#2ca02c', label='Total Impulse (N-s)')
 # ax2.set_ylim(0, 0.1)
 
 box = ax1.get_position()
 ax1.set_position([box.x0, box.y0 + box.height * 0.1, box.width, box.height * 0.9])
-fig2.legend(['Thrust (N)', 'Total Impulse (N-s)'], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=2, frameon=False )
+fig2.legend(['Thrust (N)', 'Cumulative Avg Thrust (N)', 'Total Impulse (N-s)'], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False )
 
 ax1.grid(which='major', axis='both', linestyle='--')
 
@@ -270,7 +284,7 @@ plt.title('Thrust & Total Impulse for Single Plenum Discharge', y=1.03, color='#
 
 
 # ---- Plot Mass Flow Rate and Total Mass
-fig3, ax1 = plt.subplots(figsize=(8, 5), dpi=150)
+fig3, ax1 = plt.subplots(figsize=(8, 5), dpi=90)
 ax1.set_xlabel('Time (s)', color='#413839')
 ax1.set_ylabel('Mass Flow Rate (g/s)', color='#413839')
 ax1.plot(time, list_of_mdots, color='#1f77b4', label='Mass Flow Rate (g/s)')
@@ -280,7 +294,7 @@ ax1.tick_params(colors='#413839')
 ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
 
 ax2.set_ylabel('Propellant Consumed (g)', color='#413839')  # we already handled the x-label with ax1
-ax2.plot(time, cumulative_mass, color='#2ca02c', label='Propellant Consumed (g)')
+ax2.plot(time_offset, cumulative_mass, color='#2ca02c', label='Propellant Consumed (g)')
 # ax2.set_ylim(0, 0.3)
 
 box = ax1.get_position()
