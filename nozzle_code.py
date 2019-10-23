@@ -23,6 +23,10 @@ def nozzle(P_t, T_t, P_amb, d_star, expansion_ratio, half_angle, gas_type):
     if gas_type == 'CO2':
         k = 1.289
         R = 8.314/0.04401  # Specific gas constant (J/kg-K)
+    
+    if gas_type == 'air':
+        k = 1.401
+        R = 8.314/0.0289645  # Specific gas constant (J/kg-K)
 
 
     ## --------------------------------------------------------------------------------
@@ -100,7 +104,7 @@ def nozzle(P_t, T_t, P_amb, d_star, expansion_ratio, half_angle, gas_type):
     elif P_t/P_amb > PR_crit_sub and P_t/P_amb < PR_crit_sup:
         # The flow is overexpanded and a shock will occur, but it's anyone's guess as to whether the shock occurs inside the nozzle or outside
         # We would need to know where the shock occurs based on the area ratio at the location of the shock
-        # The only thing we do know is that the flow is isentropic before and after the shock, but not between
+        # The only thing we do know is that the flow is isentropic before and after the shock, but not between, and the exit pressure = P_ambient
         # The total pressure decreases across the shock
 
         # Shock! But where? Start by checking the extreme case of a shock at the nozzle exit.
@@ -153,7 +157,7 @@ def nozzle(P_t, T_t, P_amb, d_star, expansion_ratio, half_angle, gas_type):
     a_exit = np.sqrt(k*R*T_exit)  # Exit speed of sound (m/s)
     v_exit = M_exit*a_exit  # Exit velocity (m/s)
     rho_exit = P_exit/(R*T_exit)  # Units of kg/m^3
-    m_dot = rho_exit*A_exit*v_exit  # Units of kg
+    m_dot = rho_exit*A_exit*v_exit  # Units of kg/s
 
 
     # Q_scfm = (m_dot/1.98)*35.3147*60  # Volumetric flow rate (m^3/s)
@@ -194,4 +198,4 @@ def nozzle(P_t, T_t, P_amb, d_star, expansion_ratio, half_angle, gas_type):
 
 
     # return m_dot, P_star, T_star, a_star, Re_star, M_crit_sub, M_crit_sup, P_exit, T_exit, v_exit, a_exit, F, F_mdotv, F_pdiff
-    return m_dot, M_crit_sub, M_crit_sup, PR_crit_sub, PR_crit_sup, PR_exit_shock, M_exit_behindshock, M_exit, P_exit/6894.76, v_exit, F, F_mdotv, F_pdiff
+    return m_dot, M_crit_sub, M_crit_sup, PR_crit_sub, PR_crit_sup, PR_exit_shock, M_exit_behindshock, M_exit, P_exit/6894.76, v_exit, F, F_mdotv, F_pdiff, P_star/6894.76, T_star, rho_star, T_exit, rho_exit
