@@ -154,8 +154,8 @@ def nozzle(P_t, T_t, P_amb, d_star, expansion_ratio, half_angle, gas_type):
     ## --------------------------------------------------------------------------------    
     Z = 1 + L*M_exit**2
     T_exit = T_t/Z  # Exit temperature (K)
-    a_exit = np.sqrt(k*R*T_exit)  # Exit speed of sound (m/s)
-    v_exit = M_exit*a_exit  # Exit velocity (m/s)
+    c_exit = np.sqrt(k*R*T_exit)  # Exit speed of sound (m/s)
+    v_exit = M_exit*c_exit  # Exit velocity (m/s)
     rho_exit = P_exit/(R*T_exit)  # Units of kg/m^3
     m_dot = rho_exit*A_exit*v_exit  # Units of kg/s
 
@@ -168,13 +168,13 @@ def nozzle(P_t, T_t, P_amb, d_star, expansion_ratio, half_angle, gas_type):
     # T_exit = []
     # P_exit = []
     # v_exit = []
-    # a_exit = []
+    # c_exit = []
 
     # for i in [M_crit_sub, M_crit_sup]:
     #     Z = 1 + L*(i**2)
     #     T_exit.append(T_t/Z)  # Exit temperature (K)
     #     v_exit.append( i*np.sqrt(k*R*(T_t/Z)) )  # Exit velocity (m/s)
-    #     a_exit.append(np.sqrt(k*R*(T_t/Z)))  # Exit speed of sound (m/s)
+    #     c_exit.append(np.sqrt(k*R*(T_t/Z)))  # Exit speed of sound (m/s)
     #     P_exit.append(P_t*Z**(-W))
 
         # if P_exit[i] > P_amb:
@@ -197,5 +197,5 @@ def nozzle(P_t, T_t, P_amb, d_star, expansion_ratio, half_angle, gas_type):
 
 
 
-    # return m_dot, P_star, T_star, a_star, Re_star, M_crit_sub, M_crit_sup, P_exit, T_exit, v_exit, a_exit, F, F_mdotv, F_pdiff
-    return m_dot, M_crit_sub, M_crit_sup, PR_crit_sub, PR_crit_sup, PR_exit_shock, M_exit_behindshock, M_exit, P_exit/6894.76, v_exit, F, F_mdotv, F_pdiff, P_star/6894.76, T_star, rho_star, T_exit, rho_exit
+    # return m_dot, P_star, T_star, a_star, Re_star, M_crit_sub, M_crit_sup, P_exit, T_exit, v_exit, F, F_mdotv, F_pdiff
+    return m_dot, M_crit_sub, M_crit_sup, PR_crit_sub, PR_crit_sup, PR_exit_shock, M_exit_behindshock, M_exit, P_exit/6894.76, v_exit, F, P_star/6894.76, T_star, rho_star, T_exit, rho_exit
