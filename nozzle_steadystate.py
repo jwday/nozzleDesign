@@ -10,10 +10,10 @@ import sys
 
 # Gas conditions
 P_amb = 14.7  # Ambient Pressure (psia)
-T_t = -20 + 273.15  # Total Temperature (K)
+T_t = 20 + 273.15  # Total Temperature (K)
 
 # Nozzle geometry
-d_star = 0.6  # Throat diameter (mm)
+d_star = 0.60  # Throat diameter (mm)
 half_angle = 10  # Conical Nozzle expansion angle (degrees)
 expansion_ratio = 1.3225
 # # PSI  ----- Exp. Ratio
@@ -41,27 +41,30 @@ for P_t in list_of_P_ts:
 
 # Import experimental data
 data1 = pd.read_csv('10312019_test5.csv')
-data1.insert(1, "Pressure (psia)", [x+14.7 for x in data1["Pressure (psig)"]], True)
-data1.insert(5, "Beta min init", [round(x,4) for x in (data1["Ma init (g)"]-0.3)/(data1["Mb init (g)"]+0.03)])
-data1.insert(6, "Beta max init", [round(x,4) for x in (data1["Ma init (g)"]+0.3)/(data1["Mb init (g)"]-0.03)])
+data1.insert(1, "P init (psia)", [x+14.7 for x in data1["P init (psig)"]], True)
+data1.insert(3, "P fin (psia)", [x+14.7 for x in data1["P fin (psig)"]], True)
+data1.insert(4, "P avg (psia)", [x for x in (data1["P init (psia)"] + data1["P fin (psia)"])/2], True)
 
-data1.insert(9, "Beta min final", [round(x,4) for x in (data1["Ma final (g)"]-0.3)/(data1["Mb final (g)"]+0.03)])
-data1.insert(10, "Beta max final", [round(x,4) for x in (data1["Ma final (g)"]+0.3)/(data1["Mb final (g)"]-0.03)])
+data1.insert(8, "Beta min init", [round(x,4) for x in (data1["Ma init (g)"]-0.3)/(data1["Mb init (g)"]+0.03)])
+data1.insert(9, "Beta max init", [round(x,4) for x in (data1["Ma init (g)"]+0.3)/(data1["Mb init (g)"]-0.03)])
 
-data1.insert(11, "dM min", [round(x,2) for x in (data1["Beta min init"]+1)*data1["Mb init (g)"] + 
+data1.insert(12, "Beta min final", [round(x,4) for x in (data1["Ma final (g)"]-0.3)/(data1["Mb final (g)"]+0.03)])
+data1.insert(13, "Beta max final", [round(x,4) for x in (data1["Ma final (g)"]+0.3)/(data1["Mb final (g)"]-0.03)])
+
+data1.insert(14, "dM min", [round(x,2) for x in (data1["Beta min init"]+1)*data1["Mb init (g)"] + 
 												(data1["Beta min init"]-1)*0.03 -
 												(data1["Beta max final"]+1)*data1["Mb final (g)"] +
 												(data1["Beta max final"]-1)*0.03])
 
-data1.insert(12, "dM max", [round(x,2) for x in (data1["Beta max init"]+1)*data1["Mb init (g)"] - 
+data1.insert(15, "dM max", [round(x,2) for x in (data1["Beta max init"]+1)*data1["Mb init (g)"] - 
 												(data1["Beta max init"]-1)*0.03 -
 												(data1["Beta min final"]+1)*data1["Mb final (g)"] -
 												(data1["Beta min final"]-1)*0.03])
 
-data1.insert(13, "dM/dt min", [ round(x,3) for x in data1["dM min"]/data1["Time (s)"] ])
-data1.insert(14, "dM/dt max", [ round(x,3) for x in data1["dM max"]/data1["Time (s)"] ])
-data1.insert(15, "dM/dt nom", [ round(x,2) for x in (data1["Ma init (g)"] + data1["Mb init (g)"] - data1["Ma final (g)"] - data1["Mb final (g)"])/data1["Time (s)"] ])
-data1.insert(16, "dM/dt err", [ x for x in data1["dM/dt max"]-data1["dM/dt min"] ])
+data1.insert(16, "dM/dt min", [ round(x,3) for x in data1["dM min"]/data1["Time (s)"] ])
+data1.insert(17, "dM/dt max", [ round(x,3) for x in data1["dM max"]/data1["Time (s)"] ])
+data1.insert(18, "dM/dt nom", [ round(x,2) for x in (data1["Ma init (g)"] + data1["Mb init (g)"] - data1["Ma final (g)"] - data1["Mb final (g)"])/data1["Time (s)"] ])
+data1.insert(19, "dM/dt err", [ x for x in data1["dM/dt max"]-data1["dM/dt min"] ])
 
 
 
@@ -75,10 +78,10 @@ ax1.set_xlabel('Pressure (psia)', color='#413839')
 ax1.set_ylabel('Mass Flow Rate (g/s)', color='#413839')
 
 ax1.plot(list_of_P_ts, list_of_mdots, color='#1f77b4', label='isentropic')
-ax1.errorbar(data1["Pressure (psia)"], data1["dM/dt nom"], xerr=2, yerr=data1["dM/dt err"]/2, color='#2ca02c', label='experimental', linestyle='none', marker='x')
+ax1.errorbar(data1["P avg (psia)"], data1["dM/dt nom"], xerr=3, yerr=data1["dM/dt err"]/2, color='#2ca02c', label='experimental', linestyle='none', marker='x')
 
-slope, intercept, r_value, p_value, std_err = stats.linregress(data1["Pressure (psia)"], data1["dM/dt nom"])
-ax1.plot(data1["Pressure (psia)"], slope*data1["Pressure (psia)"]+intercept, color='#2ca02c', linestyle='--', label='_nolegend_')
+slope, intercept, r_value, p_value, std_err = stats.linregress(data1["P avg (psia)"], data1["dM/dt nom"])
+ax1.plot(data1["P avg (psia)"], slope*data1["P avg (psia)"]+intercept, color='#2ca02c', linestyle='--', label='_nolegend_')
 
 ax1.tick_params(colors='#413839')
 ax1.grid(which='major', axis='both', linestyle='--')
