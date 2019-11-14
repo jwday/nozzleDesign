@@ -544,6 +544,37 @@ plt.title('Single Plenum Thrust ({} mm), 11/06/2019'.format(d_star), y=1.03, col
 
 
 
+# Mass Flow Rate (using 16g cartridges)
+massflow_data11 = massflow_data_test11('Test Data/11132019_test11.csv', 0.0008309455587)
+
+fig10, ax1 = plt.subplots(figsize=(8.5, 5), dpi=90)
+ax1.set_xlabel('Pressure (psia)', color='#413839')
+ax1.set_ylabel('Mass Flow Rate (g/s)', color='#413839')
+
+ax1.plot(list_of_P_ts, list_of_mdots, color='#1f77b4', label='isentropic')
+
+massflow_data = [massflow_data11]
+
+for name in massflow_data:
+	ax1.errorbar(name["P init (psia)"], name["dM/dt nom"], xerr=2, yerr=name["dM/dt err"]/2, color='#2ca02c', label='experimental', linestyle='none', marker='x')
+
+all_massflow_data = pd.concat(massflow_data, sort=False)
+
+slope, intercept, r_value, p_value, std_err = stats.linregress(all_massflow_data["P init (psia)"], all_massflow_data["dM/dt nom"])
+ax1.plot(all_massflow_data["P init (psia)"], slope*all_massflow_data["P init (psia)"]+intercept, color='#2ca02c', linestyle='--', label='_nolegend_')
+
+ax1.tick_params(colors='#413839')
+ax1.grid(which='major', axis='both', linestyle='--')
+box = ax1.get_position()
+ax1.set_position([box.x0, box.y0 + box.height*0.1, box.width, box.height*0.9])
+
+fig10.legend(['Inviscid', 'Experimental'], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False )
+plt.title('Mass Flow Rate, 16g Cartridge Test ({} mm)'.format(d_star), y=1.03, color='#413839')
+
+ax1.set_ylim([0, 0.8])
+
+
+
 
 # ---- Plot Everything
 plt.show()
