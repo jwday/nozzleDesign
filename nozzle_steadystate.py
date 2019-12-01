@@ -7,6 +7,7 @@ import math
 import pandas as pd
 import numpy as np
 import sys
+from data_handling_funcs import *
 
 # Gas conditions
 P_amb = 14.7  # Ambient Pressure (psia)
@@ -26,7 +27,7 @@ gas_type = 'CO2'
 
 
 list_of_P_ts = [x+14.7 for x in list(range(101))]
-list_of_T_ts = [T_t]*101
+list_of_T_ts = [220, 260, 293]
 list_of_mdots = []
 list_of_thrusts = []
 
@@ -39,8 +40,8 @@ for P_t in list_of_P_ts:
 
 
 
-# Import experimental data
-data1 = pd.read_csv('10312019_test5.csv')
+# Import experimental mass flow rate data
+data1 = pd.read_csv('Test Data/10312019_test5.csv')
 data1.insert(1, "P init (psia)", [x+14.7 for x in data1["P init (psig)"]], True)
 data1.insert(3, "P fin (psia)", [x+14.7 for x in data1["P fin (psig)"]], True)
 data1.insert(4, "P avg (psia)", [x for x in (data1["P init (psia)"] + data1["P fin (psia)"])/2], True)
@@ -97,6 +98,53 @@ ax1.set_position([box.x0, box.y0 + box.height*0.1, box.width, box.height*0.9])
 
 fig1.legend(['Inviscid', 'Experimental', 'Temperature'], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False )
 plt.title('Mass Flow Rate Comparison ({} mm)'.format(d_star), y=1.03, color='#413839')
+
+
+
+
+
+
+
+# Thrust vs. Pressure (Inviscid and Experimental)
+# test8_trial1 = thrust_data('Test Data/11062019_thrust_test1.csv', 97.56)
+# thrust_data2 = thrust_data('11062019_thrust_test2.csv', 97.61)
+# thrust_data3 = thrust_data('11062019_thrust_test3.csv', 97.51)
+test8_trial7 = thrust_data('Test Data/11062019_test8_thrust_trial7.csv', 98.18)
+test8_trial10 = thrust_data('Test Data/11062019_test8_thrust_trial10.csv', 97.71)
+test8_trial11 = thrust_data('Test Data/11062019_test8_thrust_trial11.csv', 97.62)
+# test8_trial12 = thrust_data('Test Data/11062019_test8_thrust_trial12.csv', 97.66)
+
+# test9_trial1 = thrust_data('Test Data/11072019_test9_thrust_trial1.csv', 144.33)
+# test9_trial5 = thrust_data('Test Data/11072019_test9_thrust_trial5.csv', 144.65)
+test9_trial9 = thrust_data('Test Data/11072019_test9_thrust_trial9.csv', 145.07)
+
+data_points = [test8_trial7, test8_trial10, test8_trial11, test9_trial9]
+
+fig8, ax1 = plt.subplots(figsize=(6.5, 4), dpi=90)
+	# Blue: #1f77b4 (Inviscid)
+	# Green: #2ca02c
+	# Orange: #ff7f0e
+	# Gray: #808080
+ax1.set_xlabel('Pressure (psia)', color='#413839')
+ax1.set_ylabel('Thrust (mN)', color='#413839')
+ax1.plot(list_of_P_ts, [x*1000 for x in list_of_thrusts], color='#1f77b4', label='isentropic')
+
+for name in data_points:
+	ax1.plot(name["Pressure (psia)"], name["Thrust (mN)"], color='#2ca02c', label='trial1', linestyle='none', marker='x')
+
+all_thrust_data = pd.concat(data_points)
+
+slope, intercept, r_value, p_value, std_err = stats.linregress(all_thrust_data["Pressure (psia)"], all_thrust_data["Thrust (mN)"])
+ax1.plot(all_thrust_data["Pressure (psia)"], slope*all_thrust_data["Pressure (psia)"]+intercept, color='#2ca02c', linestyle='--', label='_nolegend_')
+
+ax1.tick_params(colors='#413839')
+ax1.grid(which='major', axis='both', linestyle='--')
+
+box = ax1.get_position()
+ax1.set_position([box.x0, box.y0 + box.height*0.1, box.width, box.height*0.9])
+
+fig8.legend(['Inviscid', 'Experimental'], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False )
+# plt.title('Thrust Comparison ({} mm)'.format(d_star), y=1.03, color='#413839')
 
 # ---- Plot Everything
 plt.show()

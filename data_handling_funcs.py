@@ -2,10 +2,29 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from scipy import stats
 
-def massflow_data_test11(filename, sys_char_max, sys_char_min):
+def all_data(prefix):
+	data_float_psi = pd.read_csv(str(prefix + '_float_data.csv'))
+	data_float_psi.insert(2, "Float Pressure (psia)", [x+14.7 for x in data_float_psi["Float Pressure (psig)"]])
 
+	data_prop_psi = pd.read_csv(str(prefix + '_prop_data.csv'))
+	data_prop_psi.insert(2, "Prop Pressure (psia)", [x+14.7 for x in data_prop_psi["Prop Pressure (psig)"]])
+
+	data_weight = pd.read_csv(str(prefix + '_loadcell_data.csv'))
+	data_weight.insert(2, "Thrust (mN)", [x*9.81 for x in data_weight["Weight (?)"]])
+
+	data_temp = pd.read_csv(str(prefix + '_temp_data.csv'))
+	data_temp.insert(2, "Temperature (K)", [x+273.15 for x in data_temp["Exit Temperature (Celsius)"]])
+
+	return [data_float_psi, data_prop_psi, data_weight, data_temp]
+
+
+
+def massflow_data_test11(filename, sys_mass, sys_psia):
 	data = pd.read_csv(str(filename))
 	data.insert(2, "P init (psia)", [x+14.7 for x in data["P init (psig)"]], True)
+	
+	sys_char_max = (sys_mass + 0.03)/(sys_psia - 2)  # sys_char = (m1 / P1)
+	sys_char_min = (sys_mass - 0.03)/(sys_psia + 2)
 
 	data.insert(7, "sys mass max (g)", [ round(x,2) for x in (data["P init (psia)"]+2)*sys_char_max ])
 	data.insert(8, "sys mass min (g)", [ round(x,2) for x in (data["P init (psia)"]-2)*sys_char_min ])
@@ -17,6 +36,8 @@ def massflow_data_test11(filename, sys_char_max, sys_char_min):
 	data.insert(12, "dM/dt max", [ round(x,3) for x in data["dM max"] / data["Time (s)"] ])
 	data.insert(13, "dM/dt nom", [ round(x,2) for x in (data["M init (g)"] - data["M final (g)"]) / data["Time (s)"] ])
 	data.insert(14, "dM/dt err", [ x for x in data["dM/dt max"]-data["dM/dt min"] ])
+
+	data.insert(15, "Pressure (psia)", [ round(x,2) for x in (data["P init (psig)"] + data["P fin (psig)"])/2 + 14.7 ])
 
 	return data
 

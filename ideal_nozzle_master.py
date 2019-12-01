@@ -17,7 +17,7 @@ from data_handling_funcs import *
 # Gas initial conditions
 P_amb = 14.7  # Ambient Pressure (psia)
 list_of_P_ts = list(range(100))
-list_of_Tts = [220, 290]
+list_of_Tts = [218, 293]
 
 
 
@@ -61,7 +61,7 @@ for T in list_of_Tts:
 # Plot Mass Flow Rate (using 16g cartridges)
 massflow_data11 = massflow_data_test11('Test Data/11132019_test11.csv', 0.0008809746, 0.00079844206)    
 
-fig1, ax1 = plt.subplots(figsize=(8.5, 5), dpi=90)
+fig1, ax1 = plt.subplots(figsize=(6.5, 4), dpi=90)
 ax1.set_xlabel('Pressure (psia)', color='#413839')
 ax1.set_ylabel('Mass Flow Rate (g/s)', color='#413839')
 
@@ -70,11 +70,11 @@ colors = ['#1f77b4', '#ff7f0e']
     # Green: #2ca02c
     # Orange: #ff7f0e
 	# Gray: #808080
-
+linestyles = ['-', '--']
 
 for i, T in enumerate(list_of_Tts):
-    label = 'Inviscid (' + str(T) + ' K)'
-    ax1.plot(list_of_P_ts, data_dict[str(T)]['mdot'], color=colors[i], label=label)
+    label = 'Inviscid (' + str(T-273) + ' C)'
+    ax1.plot(list_of_P_ts, data_dict[str(T)]['mdot'], color=colors[i], label=label, linestyle=linestyles[i])
 
 massflow_data = [massflow_data11]
 
@@ -88,54 +88,58 @@ ax1.set_position([box.x0, box.y0 + box.height*0.1, box.width, box.height*0.9])
 
 # legend((line1, line2, line3), ('label1', 'label2', 'label3'))
 fig1.legend(loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False)
-plt.title('Mass Flow Rate, 16g Cartridge Test ({} mm)'.format(d_star), y=1.03, color='#413839')
+plt.title('Mass Flow Rate ({} mm Nozzle)'.format(d_star), y=1.03, color='#413839')
 
+ax1.set_xlim([10, 110])
 ax1.set_ylim([0, 0.8])
 
 
 
-# Thrust vs. Pressure (Isentropic vs. Experimental)
+# Thrust vs. Pressure (Inviscid and Experimental)
+# test8_trial1 = thrust_data('Test Data/11062019_thrust_test1.csv', 97.56)
+# thrust_data2 = thrust_data('11062019_thrust_test2.csv', 97.61)
+# thrust_data3 = thrust_data('11062019_thrust_test3.csv', 97.51)
 test8_trial7 = thrust_data('Test Data/11062019_test8_thrust_trial7.csv', 98.18)
 test8_trial10 = thrust_data('Test Data/11062019_test8_thrust_trial10.csv', 97.71)
 test8_trial11 = thrust_data('Test Data/11062019_test8_thrust_trial11.csv', 97.62)
-test8_trial12 = thrust_data('Test Data/11062019_test8_thrust_trial12.csv', 97.66)
-test9_trial1 = thrust_data('Test Data/11072019_test9_thrust_trial1.csv', 144.33)
-test9_trial5 = thrust_data('Test Data/11072019_test9_thrust_trial5.csv', 144.65)
+# test8_trial12 = thrust_data('Test Data/11062019_test8_thrust_trial12.csv', 97.66)
+
+# test9_trial1 = thrust_data('Test Data/11072019_test9_thrust_trial1.csv', 144.33)
+# test9_trial5 = thrust_data('Test Data/11072019_test9_thrust_trial5.csv', 144.65)
 test9_trial9 = thrust_data('Test Data/11072019_test9_thrust_trial9.csv', 145.07)
 
-data_points = [test8_trial7, test8_trial10, test8_trial11, test8_trial12, test9_trial1, test9_trial5, test9_trial9]
+data_points = [test8_trial7, test8_trial10, test8_trial11, test9_trial9]
 
-fig2, ax1 = plt.subplots(figsize=(8.5, 5), dpi=90)
-    # Blue: #1f77b4 (Inviscid)
-    # Green: #2ca02c
-    # Orange: #ff7f0e
+fig8, ax1 = plt.subplots(figsize=(6.5, 4), dpi=90)
+	# Blue: #1f77b4 (Inviscid)
+	# Green: #2ca02c
+	# Orange: #ff7f0e
 	# Gray: #808080
 ax1.set_xlabel('Pressure (psia)', color='#413839')
 ax1.set_ylabel('Thrust (mN)', color='#413839')
-
-colors = ['#1f77b4', '#ff7f0e']
-
 for i, T in enumerate(list_of_Tts):
-    label = 'Inviscid (' + str(T) + ' K)'
-    ax1.plot(list_of_P_ts, [x*1000 for x in data_dict[str(T)]['thrust']], color=colors[i], label=label)
+    label = 'Inviscid (' + str(T-273) + ' C)'
+    ax1.plot(list_of_P_ts, data_dict[str(T)]['thrust']*1000, color=colors[i], label=label, linestyle=linestyles[i])
 
-for name in data_points:
-	ax1.errorbar(name["Pressure (psia)"], name["Thrust (mN)"], xerr=2, yerr=1.1772/2, color='#2ca02c', label='Experimental', linestyle='none', marker='x')
+# for name in data_points:
+# 	ax1.plot(name["Pressure (psia)"], name["Thrust (mN)"], color='#2ca02c', label='Experimental', linestyle='none', marker='x')
 
-# all_thrust_data = pd.concat(data_points)
+all_thrust_data = pd.concat(data_points)
+ax1.plot(all_thrust_data["Pressure (psia)"], all_thrust_data["Thrust (mN)"], color='#2ca02c', label='Experimental', linestyle='none', marker='x')
 
-# slope, intercept, r_value, p_value, std_err = stats.linregress(all_thrust_data["Pressure (psia)"], all_thrust_data["Thrust (mN)"])
-# ax1.plot(all_thrust_data["Pressure (psia)"], slope*all_thrust_data["Pressure (psia)"]+intercept, color='#2ca02c', linestyle='--', label='_nolegend_')
+slope, intercept, r_value, p_value, std_err = stats.linregress(all_thrust_data["Pressure (psia)"], all_thrust_data["Thrust (mN)"])
+ax1.plot(all_thrust_data["Pressure (psia)"], slope*all_thrust_data["Pressure (psia)"]+intercept, color='#2ca02c', linestyle='--', label='_nolegend_')
 
 ax1.tick_params(colors='#413839')
 ax1.grid(which='major', axis='both', linestyle='--')
+
 box = ax1.get_position()
 ax1.set_position([box.x0, box.y0 + box.height*0.1, box.width, box.height*0.9])
 
-fig2.legend(['Inviscid (220 K)', 'Inviscid (290 K)', 'Experimental'], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False)
-plt.title('Thrust Comparison ({} mm)'.format(d_star), y=1.03, color='#413839')
+fig8.legend(loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False )
+# plt.title('Thrust Comparison ({} mm)'.format(d_star), y=1.03, color='#413839')
 
-
+ax1.set_xlim([10, 110])
 
 
 
