@@ -16,7 +16,7 @@ from data_handling_funcs import *
 
 # Gas initial conditions
 P_amb = 14.7  # Ambient Pressure (psia)
-list_of_P_ts = list(range(100))
+list_of_P_ts = list(range(120))
 list_of_Tts = [218, 293]
 
 
@@ -90,7 +90,7 @@ ax1.set_position([box.x0, box.y0 + box.height*0.1, box.width, box.height*0.9])
 fig1.legend(loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False)
 plt.title('Mass Flow Rate ({} mm Nozzle)'.format(d_star), y=1.03, color='#413839')
 
-ax1.set_xlim([10, 110])
+ax1.set_xlim([10, 120])
 ax1.set_ylim([0, 0.8])
 
 

@@ -376,44 +376,46 @@ dia = 2*(vol*(3/4)/math.pi)**(1/3)  # Plenum diatmer , units of m
 
 
 # ---- Plot 2x Thrust(s), 2x Pressure(s), Impulse
-# fig5, ax1 = plt.subplots(figsize=(7.5, 4.5), dpi=150)
-# ax1.set_xlabel('Time (s)', color='#413839')
-# ax1.set_ylabel('Pressure (psia)', color='#413839')
-# ax1.plot(time, list_of_P_ts, color='#1f77b4', label='Inlet Pressure (psia)')
-# ax1.plot(time, list_of_P_exits, color='#1f77b4', label='Exit Pressure (psia)', linestyle='--')
-# ax1.tick_params(colors='#413839')
+fig5, ax1 = plt.subplots(figsize=(6.5, 4), dpi=180)
+ax1.set_xlabel('Time, s', color='#413839')
+ax1.set_ylabel('Pressure, psia', color='#413839')
+ax1.plot(time, list_of_P_ts, color='#1f77b4', label='Inlet Pressure, psia', linestyle='-')
+ax1.plot(time, list_of_P_exits, color='#1f77b4', label='Exit Pressure, psia', linestyle=':')
+ax1.tick_params(colors='#413839')
 
-# ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
 
-# ax2.set_ylabel('Thrust (mN)', color='#413839')
-# ax2.plot(time, [x*1000 for x in list_of_thrusts], color='#ff7f0e', label='Instantaneous Thrust (mN)')
-# ax2.plot(time_offset, [x*1000 for x in average_thrust], color='#ff7f0e', label='Cumulative Avg Thrust (mN)', linestyle='--')
-# ax2.tick_params(colors='#413839')
+ax2.set_ylabel('Thrust, mN', color='#413839')
+ax2.plot(time, [x*1000 for x in list_of_thrusts], color='#ff7f0e', label='Instantaneous Thrust (mN)', linestyle='--')
+ax2.plot(time_offset, [x*1000 for x in average_thrust], color='#ff7f0e', label='Cumulative Avg Thrust (mN)', linestyle='-.')
+ax2.tick_params(colors='#413839')
 
-# ax3 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+ax3 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
 
-# ax3.set_ylabel('Total Impulse (N-s)', color='#413839')  # we already handled the x-label with ax1
-# ax3.plot(time_offset, [x for x in cumulative_impulse], color='#2ca02c', label='Total Impulse (N-s)')
+ax3.set_ylabel('Total Impulse, mN-s', color='#413839')  # we already handled the x-label with ax1
+ax3.plot(time_offset, [x*1000 for x in cumulative_impulse], color='#2ca02c', label='Total Impulse (N-s)', linestyle=(0, (3, 1, 1, 1, 1, 1)))
 
-# ax3.spines['right'].set_position(('outward', 60))
+ax3.spines['right'].set_position(('outward', 60))
 
-# box = ax1.get_position()
-# ax1.set_position([box.x0, box.y0 + box.height*0.1, box.width*0.88, box.height*0.88])
-# fig5.legend(['Inlet Pressure', 'Exit Pressure', 'Instantaneous Thrust', 'Cumulative Avg Thrust', 'Total Impulse'], loc='center', bbox_to_anchor=(0.5, 0.05), ncol=3, frameon=False )
+box = ax1.get_position()
+ax1.set_position([box.x0, box.y0 + box.height*0.25, box.width*0.8, box.height*0.8])
+fig5.legend(['Inlet Pressure', 'Exit Pressure', 'Instantaneous Thrust', 'Cumulative Avg Thrust', 'Total Impulse'], loc='center', bbox_to_anchor=(0.5, 0.08), ncol=3, frameon=False )
 
-# ax1.grid(which='major', axis='both', linestyle='--')
+ax1.grid(which='major', axis='both', linestyle='--')
 # plt.title('Thruster Characteristics for Single Plenum Discharge ({} mm Throat)'.format(d_star), y=1.03, color='#413839')
 
 
-# Inlet Plot Pressure vs. Thrust
-# fig6, ax1 = plt.subplots(figsize=(8.5, 5), dpi=90)
-# ax1.set_xlabel('Pressure (psia)', color='#413839')
-# ax1.set_ylabel('Thrust (N)', color='#413839')
-# ax1.plot(list_of_P_ts, list_of_thrusts, color='#1f77b4', label='Thrust (N)')
-# ax1.tick_params(colors='#413839')
 
-# ax1.grid(which='major', axis='both', linestyle='--')
-# plt.title('Thrust vs. Inlet Pressure ({} mm)'.format(d_star), y=1.03, color='#413839')
+
+# Inlet Plot Pressure vs. Thrust
+fig6, ax1 = plt.subplots(figsize=(8.5, 5), dpi=90)
+ax1.set_xlabel('Pressure (psia)', color='#413839')
+ax1.set_ylabel('Thrust (N)', color='#413839')
+ax1.plot(list_of_P_ts, list_of_thrusts, color='#1f77b4', label='Thrust (N)')
+ax1.tick_params(colors='#413839')
+
+ax1.grid(which='major', axis='both', linestyle='--')
+plt.title('Thrust vs. Inlet Pressure ({} mm)'.format(d_star), y=1.03, color='#413839')
 
 
 
