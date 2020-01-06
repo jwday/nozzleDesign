@@ -16,17 +16,17 @@ from matplotlib.lines import Line2D
 ## ---- OPTIONS --------------------------------------------------------------------
 
 # Gas initial conditions
-P_t_init = 113.7  # Max Total Pressure (psia)
+P_t_init = 114.7  # Max Total Pressure (psia)
 P_amb = 14.7  # Ambient Pressure (psia)
 T_t_init = -55 + 273.15  # Total Temperature (K)
 vol = 30/10**6  # Plenum volume, units of m^3 (cm^3 / 10^6)
 
 
 # no_of_points = 30
-time_step = 0.01
+time_step = 0.001
 
 # Nozzle geometry
-d_star = 0.6  # Throat diameter (mm)
+d_star = 0.4  # Throat diameter (mm)
 expansion_ratio = 1.3225  # 1.8048 for ideal expansion at 114.7 psi supply, 2.2447 for 164.7, 1.3225 for 0.2mm and 64.7 psi, 1.1235 for 0.3 and 44.7 psi
 # # PSI  ----- Exp. Ratio
 # # 114.7 --- 1.8048
@@ -407,7 +407,7 @@ ax1.grid(which='major', axis='both', linestyle='--')
 
 
 
-# Inlet Plot Pressure vs. Thrust
+# Inlet Plot Thrust vs. Pressure
 fig6, ax1 = plt.subplots(figsize=(8.5, 5), dpi=90)
 ax1.set_xlabel('Pressure (psia)', color='#413839')
 ax1.set_ylabel('Thrust (N)', color='#413839')
