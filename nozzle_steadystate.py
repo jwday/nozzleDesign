@@ -90,8 +90,8 @@ ax1.grid(which='major', axis='both', linestyle='--')
 
 ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
 
-ax2.set_ylabel('Temperature (K)', color='#413839')
-ax2.plot(list_of_P_ts, list_of_T_ts, color='#ff7f0e', label='Critical Temperature (K)')
+# ax2.set_ylabel('Temperature (K)', color='#413839')
+# ax2.plot(list_of_P_ts, list_of_T_ts, color='#ff7f0e', label='Critical Temperature (K)')
 
 box = ax1.get_position()
 ax1.set_position([box.x0, box.y0 + box.height*0.1, box.width, box.height*0.9])

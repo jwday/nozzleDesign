@@ -26,7 +26,7 @@ vol = 30/10**6  # Plenum volume, units of m^3 (cm^3 / 10^6)
 time_step = 0.001
 
 # Nozzle geometry
-d_star = 0.4  # Throat diameter (mm)
+d_star = 0.6  # Throat diameter (mm)
 expansion_ratio = 1.3225  # 1.8048 for ideal expansion at 114.7 psi supply, 2.2447 for 164.7, 1.3225 for 0.2mm and 64.7 psi, 1.1235 for 0.3 and 44.7 psi
 # # PSI  ----- Exp. Ratio
 # # 114.7 --- 1.8048
@@ -376,46 +376,55 @@ dia = 2*(vol*(3/4)/math.pi)**(1/3)  # Plenum diatmer , units of m
 
 
 # ---- Plot 2x Thrust(s), 2x Pressure(s), Impulse
-fig5, ax1 = plt.subplots(figsize=(6.5, 4), dpi=180)
-ax1.set_xlabel('Time, s', color='#413839')
-ax1.set_ylabel('Pressure, psia', color='#413839')
-ax1.plot(time, list_of_P_ts, color='#1f77b4', label='Inlet Pressure, psia', linestyle='-')
-ax1.plot(time, list_of_P_exits, color='#1f77b4', label='Exit Pressure, psia', linestyle=':')
+linewidth = 2
+fontsize = 12
+
+fig5, ax1 = plt.subplots(figsize=(5.5, 4), dpi=200)
+ax1.set_xlabel('Time, s', color='#413839', fontsize=fontsize)
+ax1.set_ylabel('Pressure, psia', color='#413839', fontsize=fontsize)
+ax1.plot(time, list_of_P_ts, color='#1f77b4', label='Inlet Pressure, psia', linestyle='-', linewidth=linewidth)
+ax1.plot(time, list_of_P_exits, color='#1f77b4', label='Exit Pressure, psia', linestyle=':', linewidth=linewidth)
 ax1.tick_params(colors='#413839')
+ax1.set_ylim(0, 120)
 
-ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+# ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+# ax2.set_ylabel('Thrust, mN', color='#413839', fontsize=fontsize)
+# ax2.plot(time, [x*1000 for x in list_of_thrusts], color='#ff7f0e', label='Instantaneous Thrust (mN)', linestyle='--', linewidth=linewidth)
+# # ax2.plot(time_offset, [x*1000 for x in average_thrust], color='#ff7f0e', label='Cumulative Avg Thrust (mN)', linestyle='-.')
+# ax2.tick_params(colors='#413839')
+# ax2.set_ylim(0, 300)
 
-ax2.set_ylabel('Thrust, mN', color='#413839')
-ax2.plot(time, [x*1000 for x in list_of_thrusts], color='#ff7f0e', label='Instantaneous Thrust (mN)', linestyle='--')
-ax2.plot(time_offset, [x*1000 for x in average_thrust], color='#ff7f0e', label='Cumulative Avg Thrust (mN)', linestyle='-.')
-ax2.tick_params(colors='#413839')
+# ax3 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+# ax3.set_ylabel('Total Impulse, mN-s', color='#413839', fontsize=fontsize)  # we already handled the x-label with ax1
+# ax3.plot(time_offset, [x*1000 for x in cumulative_impulse], color='#2ca02c', label='Total Impulse (N-s)', linestyle=(0, (3, 1, 1, 1, 1, 1)), linewidth=linewidth)
+# ax3.spines['right'].set_position(('outward', 60))
 
-ax3 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
-
-ax3.set_ylabel('Total Impulse, mN-s', color='#413839')  # we already handled the x-label with ax1
-ax3.plot(time_offset, [x*1000 for x in cumulative_impulse], color='#2ca02c', label='Total Impulse (N-s)', linestyle=(0, (3, 1, 1, 1, 1, 1)))
-
-ax3.spines['right'].set_position(('outward', 60))
+ax4 = ax1.twinx()
+ax4.set_ylabel('ISP', color='#413839', fontsize=fontsize)
+ax4.plot(time, ISP, color='#cc0000', label='ISP', linestyle=(0, (3, 1, 1, 1)), linewidth=linewidth)
 
 box = ax1.get_position()
-ax1.set_position([box.x0, box.y0 + box.height*0.25, box.width*0.8, box.height*0.8])
-fig5.legend(['Inlet Pressure', 'Exit Pressure', 'Instantaneous Thrust', 'Cumulative Avg Thrust', 'Total Impulse'], loc='center', bbox_to_anchor=(0.5, 0.08), ncol=3, frameon=False )
+ax1.set_position([box.x0, box.y0 + box.height * 0.15, box.width * 0.95, box.height * 0.95])
+# fig5.legend(['Inlet Pressure', 'Exit Pressure', 'Instantaneous Thrust', 'Cumulative Avg Thrust', 'Total Impulse'], loc='center', bbox_to_anchor=(0.5, 0.08), ncol=3, frameon=False )
+fig5.legend(['Inlet Pressure', 'Exit Pressure', 'ISP'], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False, fontsize=fontsize)
 
 ax1.grid(which='major', axis='both', linestyle='--')
-# plt.title('Thruster Characteristics for Single Plenum Discharge ({} mm Throat)'.format(d_star), y=1.03, color='#413839')
-
+# plt.title('Single Plenum Discharge\n{0} mm Nozzle, {1} cm^3 Plenum'.format(d_star, vol*(100**3)), y=1.0, color='#413839')
+# fig5.suptitle('Single Plenum Discharge, Pressure and Impulse', fontsize=14, y=0.985)
+# fig5.suptitle('\t{0} mm Nozzle, {1} $cm^3$ Plenum'.format(d_star, vol*(100**3)), fontsize=10)
+plt.savefig('/mnt/d/OneDrive - UC Davis/HRVIP/Writing/AIAA SciTech 2019 Paper/Images/Sim Results/image.png')
 
 
 
 # Inlet Plot Thrust vs. Pressure
-fig6, ax1 = plt.subplots(figsize=(8.5, 5), dpi=90)
-ax1.set_xlabel('Pressure (psia)', color='#413839')
-ax1.set_ylabel('Thrust (N)', color='#413839')
-ax1.plot(list_of_P_ts, list_of_thrusts, color='#1f77b4', label='Thrust (N)')
-ax1.tick_params(colors='#413839')
+# fig6, ax1 = plt.subplots(figsize=(8.5, 5), dpi=90)
+# ax1.set_xlabel('Pressure (psia)', color='#413839')
+# ax1.set_ylabel('Thrust (N)', color='#413839')
+# ax1.plot(list_of_P_ts, list_of_thrusts, color='#1f77b4', label='Thrust (N)')
+# ax1.tick_params(colors='#413839')
 
-ax1.grid(which='major', axis='both', linestyle='--')
-plt.title('Thrust vs. Inlet Pressure ({} mm)'.format(d_star), y=1.03, color='#413839')
+# ax1.grid(which='major', axis='both', linestyle='--')
+# plt.title('Thrust vs. Inlet Pressure ({} mm)'.format(d_star), y=1.03, color='#413839')
 
 
 
@@ -510,41 +519,41 @@ plt.title('Thrust vs. Inlet Pressure ({} mm)'.format(d_star), y=1.03, color='#41
 # test8_trial1 = thrust_data('Test Data/11062019_thrust_test1.csv', 97.56)
 # thrust_data2 = thrust_data('11062019_thrust_test2.csv', 97.61)
 # thrust_data3 = thrust_data('11062019_thrust_test3.csv', 97.51)
-test8_trial7 = thrust_data('Test Data/11062019_test8_thrust_trial7.csv', 98.18)
-test8_trial10 = thrust_data('Test Data/11062019_test8_thrust_trial10.csv', 97.71)
-test8_trial11 = thrust_data('Test Data/11062019_test8_thrust_trial11.csv', 97.62)
+# test8_trial7 = thrust_data('Test Data/11062019_test8_thrust_trial7.csv', 98.18)
+# test8_trial10 = thrust_data('Test Data/11062019_test8_thrust_trial10.csv', 97.71)
+# test8_trial11 = thrust_data('Test Data/11062019_test8_thrust_trial11.csv', 97.62)
 # test8_trial12 = thrust_data('Test Data/11062019_test8_thrust_trial12.csv', 97.66)
 
 # test9_trial1 = thrust_data('Test Data/11072019_test9_thrust_trial1.csv', 144.33)
 # test9_trial5 = thrust_data('Test Data/11072019_test9_thrust_trial5.csv', 144.65)
-test9_trial9 = thrust_data('Test Data/11072019_test9_thrust_trial9.csv', 145.07)
+# test9_trial9 = thrust_data('Test Data/11072019_test9_thrust_trial9.csv', 145.07)
 
-data_points = [test8_trial7, test8_trial10, test8_trial11, test9_trial9]
+# data_points = [test8_trial7, test8_trial10, test8_trial11, test9_trial9]
 
-fig8, ax1 = plt.subplots(figsize=(6.5, 4), dpi=90)
-	# Blue: #1f77b4 (Inviscid)
-	# Green: #2ca02c
-	# Orange: #ff7f0e
-	# Gray: #808080
-ax1.set_xlabel('Pressure (psia)', color='#413839')
-ax1.set_ylabel('Thrust (mN)', color='#413839')
-ax1.plot(list_of_P_ts, [x*1000 for x in list_of_thrusts], color='#1f77b4', label='isentropic')
+# fig8, ax1 = plt.subplots(figsize=(6.5, 4), dpi=90)
+# 	# Blue: #1f77b4 (Inviscid)
+# 	# Green: #2ca02c
+# 	# Orange: #ff7f0e
+# 	# Gray: #808080
+# ax1.set_xlabel('Pressure (psia)', color='#413839')
+# ax1.set_ylabel('Thrust (mN)', color='#413839')
+# ax1.plot(list_of_P_ts, [x*1000 for x in list_of_thrusts], color='#1f77b4', label='isentropic')
 
-for name in data_points:
-	ax1.plot(name["Pressure (psia)"], name["Thrust (mN)"], color='#2ca02c', label='trial1', linestyle='none', marker='x')
+# for name in data_points:
+# 	ax1.plot(name["Pressure (psia)"], name["Thrust (mN)"], color='#2ca02c', label='trial1', linestyle='none', marker='x')
 
-all_thrust_data = pd.concat(data_points)
+# all_thrust_data = pd.concat(data_points)
 
-slope, intercept, r_value, p_value, std_err = stats.linregress(all_thrust_data["Pressure (psia)"], all_thrust_data["Thrust (mN)"])
-ax1.plot(all_thrust_data["Pressure (psia)"], slope*all_thrust_data["Pressure (psia)"]+intercept, color='#2ca02c', linestyle='--', label='_nolegend_')
+# slope, intercept, r_value, p_value, std_err = stats.linregress(all_thrust_data["Pressure (psia)"], all_thrust_data["Thrust (mN)"])
+# ax1.plot(all_thrust_data["Pressure (psia)"], slope*all_thrust_data["Pressure (psia)"]+intercept, color='#2ca02c', linestyle='--', label='_nolegend_')
 
-ax1.tick_params(colors='#413839')
-ax1.grid(which='major', axis='both', linestyle='--')
+# ax1.tick_params(colors='#413839')
+# ax1.grid(which='major', axis='both', linestyle='--')
 
-box = ax1.get_position()
-ax1.set_position([box.x0, box.y0 + box.height*0.1, box.width, box.height*0.9])
+# box = ax1.get_position()
+# ax1.set_position([box.x0, box.y0 + box.height*0.1, box.width, box.height*0.9])
 
-fig8.legend(['Inviscid', 'Experimental'], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False )
+# fig8.legend(['Inviscid', 'Experimental'], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False )
 # plt.title('Thrust Comparison ({} mm)'.format(d_star), y=1.03, color='#413839')
 
 
@@ -558,55 +567,55 @@ fig8.legend(['Inviscid', 'Experimental'], loc='center', bbox_to_anchor=(0.5, 0.0
 # colors = ['#2ca02c', '#ff7f0e']
 # labels = ['Trial 1', 'Trial 2']
 
-fig9, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(6.5, 6), dpi=90)
+# fig9, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(6.5, 6), dpi=90)
 # ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
 
-data_prop_psi = pd.read_csv('Test Data/20191130_131515_prop_data.csv', header=1)
-data_prop_psi.insert(2, "Prop Pressure (psia)", [x+14.7 for x in data_prop_psi["Prop Pressure (psig)"]])
+# data_prop_psi = pd.read_csv('Test Data/20191130_131515_prop_data.csv', header=1)
+# data_prop_psi.insert(2, "Prop Pressure (psia)", [x+14.7 for x in data_prop_psi["Prop Pressure (psig)"]])
 
-data_float_psi = pd.read_csv('Test Data/20191130_131515_float_data.csv', header=1)
-data_float_psi.insert(2, "Float Pressure (psia)", [x+14.7 for x in data_float_psi["Float Pressure (psig)"]])
+# data_float_psi = pd.read_csv('Test Data/20191130_131515_float_data.csv', header=1)
+# data_float_psi.insert(2, "Float Pressure (psia)", [x+14.7 for x in data_float_psi["Float Pressure (psig)"]])
 
-data_weight = pd.read_csv('Test Data/20191130_131515_loadcell_data.csv', header=1)
-data_weight.insert(2, "Thrust (mN)", [x*9.81 for x in data_weight["Weight (?)"]])
+# data_weight = pd.read_csv('Test Data/20191130_131515_loadcell_data.csv', header=1)
+# data_weight.insert(2, "Thrust (mN)", [x*9.81 for x in data_weight["Weight (?)"]])
 
-ax1.plot(data_prop_psi['Time (s)'], data_prop_psi['Prop Pressure (psia)'], 
-	color='#1f77b4', 
-	label='Upstream Pres.', 
-	marker='o', 
-	markersize='5', 
-	fillstyle='none', 
-	linestyle='none', 
-	linewidth='1')
-ax1.plot(data_float_psi['Time (s)'], data_float_psi['Float Pressure (psia)'], 
-	color='#1f77b4', 
-	label='Downstream Pres.', 
-	marker='o', 
-	markersize='5', 
-	fillstyle='none', 
-	linestyle='none', 
-	linewidth='1')
-
-
-ax2.plot(data_weight['Time (s)'], data_weight['Thrust (mN)'], 
-	color='#ff7f0e', 
-	label='Measured Thrust', 
-	marker='o',
-	markersize='5',
-	fillstyle='none', 
-	linestyle='none', 
-	linewidth='1')
+# ax1.plot(data_prop_psi['Time (s)'], data_prop_psi['Prop Pressure (psia)'], 
+# 	color='#1f77b4', 
+# 	label='Upstream Pres.', 
+# 	marker='o', 
+# 	markersize='5', 
+# 	fillstyle='none', 
+# 	linestyle='none', 
+# 	linewidth='1')
+# ax1.plot(data_float_psi['Time (s)'], data_float_psi['Float Pressure (psia)'], 
+# 	color='#1f77b4', 
+# 	label='Downstream Pres.', 
+# 	marker='o', 
+# 	markersize='5', 
+# 	fillstyle='none', 
+# 	linestyle='none', 
+# 	linewidth='1')
 
 
-ax1.plot([x+0.663 for x in time], list_of_P_ts,
-	color='#1f77b4',
-	linestyle='-', 
-	label='Inviscid Pressure')
+# ax2.plot(data_weight['Time (s)'], data_weight['Thrust (mN)'], 
+# 	color='#ff7f0e', 
+# 	label='Measured Thrust', 
+# 	marker='o',
+# 	markersize='5',
+# 	fillstyle='none', 
+# 	linestyle='none', 
+# 	linewidth='1')
 
-ax2.plot([x+0.663 for x in time], [i*1000 for i in list_of_thrusts], 
-	color='#ff7f0e', 
-	linestyle='-', 
-	label='Inviscid Thrust')
+
+# ax1.plot([x+0.663 for x in time], list_of_P_ts,
+# 	color='#1f77b4',
+# 	linestyle='-', 
+# 	label='Inviscid Pressure')
+
+# ax2.plot([x+0.663 for x in time], [i*1000 for i in list_of_thrusts], 
+# 	color='#ff7f0e', 
+# 	linestyle='-', 
+# 	label='Inviscid Thrust')
 
 
 
@@ -623,30 +632,30 @@ ax2.plot([x+0.663 for x in time], [i*1000 for i in list_of_thrusts],
 # Green: #2ca02c
 # Orange: #ff7f0e
 # Gray: #808080
-ax2.set_xlabel('Time (s)', color='#413839')
-ax1.set_ylabel('Pressure (psia)', color='#413839')
-ax2.set_ylabel('Thrust (mN)', color='#413839')
+# ax2.set_xlabel('Time (s)', color='#413839')
+# ax1.set_ylabel('Pressure (psia)', color='#413839')
+# ax2.set_ylabel('Thrust (mN)', color='#413839')
 
-ax1.set_xlim([0.5, 2.5])
+# ax1.set_xlim([0.5, 2.5])
 
 
-ax1.tick_params(colors='#413839')
-ax2.tick_params(colors='#413839')
-ax1.grid(which='major', axis='both', linestyle='--')
-ax2.grid(which='major', axis='both', linestyle='--')
+# ax1.tick_params(colors='#413839')
+# ax2.tick_params(colors='#413839')
+# ax1.grid(which='major', axis='both', linestyle='--')
+# ax2.grid(which='major', axis='both', linestyle='--')
 
-box1 = ax1.get_position()
-box2 = ax2.get_position()
-ax1.set_position([box1.x0, box1.y0 + box1.height*0.1, box1.width, box1.height*0.9])
-ax2.set_position([box2.x0, box2.y0 + box2.height*0.2, box2.width, box2.height*0.9])
+# box1 = ax1.get_position()
+# box2 = ax2.get_position()
+# ax1.set_position([box1.x0, box1.y0 + box1.height*0.1, box1.width, box1.height*0.9])
+# ax2.set_position([box2.x0, box2.y0 + box2.height*0.2, box2.width, box2.height*0.9])
 
-legend_elements = [Line2D([0], [0], marker='o', color='k', label='Experimental', markersize=5, fillstyle='none', linestyle='none'),
-				   Line2D([0], [0], linestyle='-', color='k', label='Inviscid')]
+# legend_elements = [Line2D([0], [0], marker='o', color='k', label='Experimental', markersize=5, fillstyle='none', linestyle='none'),
+# 				   Line2D([0], [0], linestyle='-', color='k', label='Inviscid')]
 
-fig9.legend(handles=legend_elements, loc='center', bbox_to_anchor=(0.5, 0.06), ncol=3, frameon=False)
+# fig9.legend(handles=legend_elements, loc='center', bbox_to_anchor=(0.5, 0.06), ncol=3, frameon=False)
 # fig9.legend(['Experimental', 'Inviscid'], loc='center', bbox_to_anchor=(0.5, 0.08), ncol=2, frameon=False)
 
-ax1.set_title('Experimental vs. Inviscid Pressure & Thrust \n({0} $mm$ Nozzle, {1} $cm^3$ Plenum)'.format(d_star, vol*10**6), y=1.06, color='#413839')
+# ax1.set_title('Experimental vs. Inviscid Pressure & Thrust \n({0} $mm$ Nozzle, {1} $cm^3$ Plenum)'.format(d_star, vol*10**6), y=1.06, color='#413839')
 #ax1.set_title('Pressure')
 #ax2.set_title('Thrust')
 

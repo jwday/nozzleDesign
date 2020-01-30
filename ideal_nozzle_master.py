@@ -58,12 +58,14 @@ for T in list_of_Tts:
 
 
 
-# Plot Mass Flow Rate (using 16g cartridges)
+# ---- Plot Mass Flow Rate (using 16g cartridges)
+linewidth = 2
+fontsize = 12
 massflow_data11 = massflow_data_test11('Test Data/11132019_test11.csv', 0.0008809746, 0.00079844206)    
 
-fig1, ax1 = plt.subplots(figsize=(6.5, 4), dpi=90)
-ax1.set_xlabel('Pressure (psia)', color='#413839')
-ax1.set_ylabel('Mass Flow Rate (g/s)', color='#413839')
+fig1, ax1 = plt.subplots(figsize=(5.75, 4), dpi=200)
+ax1.set_xlabel('Pressure (psia)', color='#413839', fontsize=fontsize)
+ax1.set_ylabel('Mass Flow Rate (g/s)', color='#413839', fontsize=fontsize)
 
 colors = ['#1f77b4', '#ff7f0e']
     # Blue: #1f77b4
@@ -74,12 +76,12 @@ linestyles = ['-', '--']
 
 for i, T in enumerate(list_of_Tts):
     label = 'Inviscid (' + str(T-273) + ' C)'
-    ax1.plot(list_of_P_ts, data_dict[str(T)]['mdot'], color=colors[i], label=label, linestyle=linestyles[i])
+    ax1.plot(list_of_P_ts, data_dict[str(T)]['mdot'], color=colors[i], label=label, linestyle=linestyles[i], linewidth=linewidth)
 
 massflow_data = [massflow_data11]
 
 for name in massflow_data:
-	ax1.errorbar(name["P init (psia)"], name["dM/dt nom"], xerr=2, yerr=name["dM/dt err"]/2, color='#2ca02c', label='Experimental', linestyle='none', marker='x')
+	ax1.errorbar(name["P init (psia)"], name["dM/dt nom"], xerr=2, yerr=name["dM/dt err"]/2, color='#2ca02c', label='Experimental', linestyle='none', marker='x', linewidth=linewidth)
 
 ax1.tick_params(colors='#413839')
 ax1.grid(which='major', axis='both', linestyle='--')
@@ -87,15 +89,17 @@ box = ax1.get_position()
 ax1.set_position([box.x0, box.y0 + box.height*0.1, box.width, box.height*0.9])
 
 # legend((line1, line2, line3), ('label1', 'label2', 'label3'))
-fig1.legend(loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False)
-plt.title('Mass Flow Rate ({} mm Nozzle)'.format(d_star), y=1.03, color='#413839')
+fig1.legend(loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False, fontsize=fontsize)
+# plt.title('Mass Flow Rate ({} mm Nozzle)'.format(d_star), y=1.03, color='#413839')
 
 ax1.set_xlim([10, 120])
 ax1.set_ylim([0, 0.8])
+plt.savefig('/mnt/d/OneDrive - UC Davis/HRVIP/Writing/AIAA SciTech 2019 Paper/Images/Sim Results/image.png')
 
 
 
-# Thrust vs. Pressure (Inviscid and Experimental)
+
+# ---- Plot Thrust vs. Pressure (Inviscid and Experimental)
 # test8_trial1 = thrust_data('Test Data/11062019_thrust_test1.csv', 97.56)
 # thrust_data2 = thrust_data('11062019_thrust_test2.csv', 97.61)
 # thrust_data3 = thrust_data('11062019_thrust_test3.csv', 97.51)
@@ -108,7 +112,8 @@ test8_trial11 = thrust_data('Test Data/11062019_test8_thrust_trial11.csv', 97.62
 # test9_trial5 = thrust_data('Test Data/11072019_test9_thrust_trial5.csv', 144.65)
 test9_trial9 = thrust_data('Test Data/11072019_test9_thrust_trial9.csv', 145.07)
 
-data_points = [test8_trial7, test8_trial10, test8_trial11, test9_trial9]
+# data_points = [test8_trial7, test8_trial10, test8_trial11, test9_trial9]
+data_points = [test9_trial9]
 
 fig8, ax1 = plt.subplots(figsize=(6.5, 4), dpi=90)
 	# Blue: #1f77b4 (Inviscid)
