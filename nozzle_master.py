@@ -16,8 +16,8 @@ from matplotlib.lines import Line2D
 ## ---- OPTIONS --------------------------------------------------------------------
 
 # Gas initial conditions
-P_t_init = 114.7  # Max Total Pressure (psia)
-P_amb = 14.7  # Ambient Pressure (psia)
+P_t_init = 114.7 * 6894.76  # Max Total Pressure (Pa)
+P_amb = 14.7 * 6894.76  # Ambient Pressure (Pa)
 T_t_init = -55 + 273.15  # Total Temperature (K)
 vol = 30/10**6  # Plenum volume, units of m^3 (cm^3 / 10^6)
 
@@ -26,7 +26,7 @@ vol = 30/10**6  # Plenum volume, units of m^3 (cm^3 / 10^6)
 time_step = 0.001
 
 # Nozzle geometry
-d_star = 0.6  # Throat diameter (mm)
+d_star = 0.0006  # Throat diameter (m)
 expansion_ratio = 1.3225  # 1.8048 for ideal expansion at 114.7 psi supply, 2.2447 for 164.7, 1.3225 for 0.2mm and 64.7 psi, 1.1235 for 0.3 and 44.7 psi
 # # PSI  ----- Exp. Ratio
 # # 114.7 --- 1.8048
@@ -40,7 +40,7 @@ gas_type = 'CO2'
 k = 1.298
 R = 8.314/0.044041  # Specific gas constant (J/kg-K)
 
-density_init = (P_t_init*(137.9/20)*1000)/(R*(T_t_init))  # Units of kg/m^3 (or g/l)
+density_init = P_t_init/(R*(T_t_init))  # Units of kg/m^3 (or g/l)
 m_init = density_init*(vol)  # Units of kg
 
 
@@ -63,6 +63,7 @@ list_of_T_stars = []
 list_of_rho_stars = []
 list_of_T_exits = []
 list_of_rho_exits = []
+list_of_Re_stars = []
 
 time = [0]
 m_gas = [m_init]
@@ -76,7 +77,7 @@ m_gas = [m_init]
 
 # for P_t in list_of_P_ts:
 while list_of_P_ts[-1] > P_amb:
-	m_dot, M_crit_sub, M_crit_sup, PR_crit_sub, PR_crit_sup, PR_exit_shock, M_exit_behindshock, M_exit, P_exit, v_exit, F, P_star, T_star, rho_star, T_exit, rho_exit = nozzle(list_of_P_ts[-1], list_of_T_ts[-1], P_amb, d_star, expansion_ratio, half_angle, gas_type)
+	m_dot, M_crit_sub, M_crit_sup, PR_crit_sub, PR_crit_sup, PR_exit_shock, M_exit_behindshock, M_exit, P_exit, v_exit, F, P_star, T_star, rho_star, Re_star, T_exit, rho_exit = nozzle(list_of_P_ts[-1], list_of_T_ts[-1], P_amb, d_star, expansion_ratio, half_angle, gas_type)
 
 	list_of_mdots.append(m_dot*1000)  # Units of g/s
 	list_of_P_exits.append(P_exit)
@@ -87,6 +88,7 @@ while list_of_P_ts[-1] > P_amb:
 	list_of_P_stars.append(P_star)
 	list_of_T_stars.append(T_star)
 	list_of_rho_stars.append(rho_star)
+	list_of_Re_stars.append(Re_star)
 	list_of_T_exits.append(T_exit)
 	list_of_rho_exits.append(rho_exit)
 
@@ -378,14 +380,35 @@ dia = 2*(vol*(3/4)/math.pi)**(1/3)  # Plenum diatmer , units of m
 # ---- Plot 2x Thrust(s), 2x Pressure(s), Impulse
 linewidth = 2
 fontsize = 12
+data = {'thrust': [x*1000 for x in list_of_thrusts], 'impulse': [x*1000 for x in cumulative_impulse], 'isp': ISP, 'reynolds': list_of_Re_stars, 'mach_exit': list_of_M_exits, 'rho_star': list_of_rho_stars}
+times = {'thrust': time, 'impulse': time_offset, 'isp': time, 'reynolds': time, 'mach_exit': time, 'rho_star': time}
+labels = {'thrust': 'Thrust, mN', 'impulse': 'Total Impulse, mN-s', 'isp': 'ISP, s', 'reynolds': 'Reynold\'s Number', 'mach_exit': 'Exit Mach No.', 'rho_star': 'Throat Density (kg/m^3)'}
+colors = {'thrust': '#ff7f0e', 'impulse': '#413839', 'isp': '#cc0000', 'reynolds': '#2ecc71', 'mach_exit': '#ff7f0e', 'rho_star': '#ff7f0e'}
 
-fig5, ax1 = plt.subplots(figsize=(5.5, 4), dpi=200)
-ax1.set_xlabel('Time, s', color='#413839', fontsize=fontsize)
-ax1.set_ylabel('Pressure, psia', color='#413839', fontsize=fontsize)
-ax1.plot(time, list_of_P_ts, color='#1f77b4', label='Inlet Pressure, psia', linestyle='-', linewidth=linewidth)
-ax1.plot(time, list_of_P_exits, color='#1f77b4', label='Exit Pressure, psia', linestyle=':', linewidth=linewidth)
-ax1.tick_params(colors='#413839')
-ax1.set_ylim(0, 120)
+for i, j in data.items():
+	fig, ax1 = plt.subplots(figsize=(6.5, 4), dpi=120)
+	ax1.set_xlabel('Time, s', color='#413839', fontsize=fontsize)
+	ax1.set_ylabel('Pressure, kPa', color='#413839', fontsize=fontsize)
+	ax1.plot(time, [x/1000 for x in list_of_P_ts], color='#1f77b4', label='Inlet Pressure, kPa', linestyle='-', linewidth=linewidth)
+	ax1.plot(time, [x/1000 for x in list_of_P_stars], color='#1f77b4', label='Throat Pressure, kPa', linestyle=':', linewidth=linewidth)
+	ax1.plot(time, [x/1000 for x in list_of_P_exits], color='#1f77b4', label='Exit Pressure, kPa', linestyle='--', linewidth=linewidth)
+	ax1.tick_params(colors='#413839')
+	# ax1.set_ylim(0, 120)
+
+	ax2 = ax1.twinx()
+	ax2.set_ylabel(labels[i], color='#413839', fontsize=fontsize)
+	ax2.plot(times[i], data[i], color=colors[i], label=labels[i], linestyle='--', linewidth=linewidth)
+	ax2.tick_params(colors='#413839')
+
+	box = ax1.get_position()
+	ax1.set_position([box.x0, box.y0 + box.height * 0.15, box.width * 0.95, box.height * 0.95])
+	fig.legend(['Inlet Pres', 'Throat Pres', 'Exit Pres', labels[i]], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=4, frameon=False, fontsize=fontsize)
+	ax1.grid(which='major', axis='both', linestyle='--')
+
+	plt.show()
+
+
+# figs = {'fig1': fig1, 'fig2': fig2, 'fig3': fig3, 'fig4': fig4}
 
 # ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
 # ax2.set_ylabel('Thrust, mN', color='#413839', fontsize=fontsize)
@@ -399,20 +422,20 @@ ax1.set_ylim(0, 120)
 # ax3.plot(time_offset, [x*1000 for x in cumulative_impulse], color='#2ca02c', label='Total Impulse (N-s)', linestyle=(0, (3, 1, 1, 1, 1, 1)), linewidth=linewidth)
 # ax3.spines['right'].set_position(('outward', 60))
 
-ax4 = ax1.twinx()
-ax4.set_ylabel('ISP', color='#413839', fontsize=fontsize)
-ax4.plot(time, ISP, color='#cc0000', label='ISP', linestyle=(0, (3, 1, 1, 1)), linewidth=linewidth)
+# ax4 = ax1.twinx()
+# ax4.set_ylabel('ISP', color='#413839', fontsize=fontsize)
+# ax4.plot(time, ISP, color='#cc0000', label='ISP', linestyle=(0, (3, 1, 1, 1)), linewidth=linewidth)
 
-box = ax1.get_position()
-ax1.set_position([box.x0, box.y0 + box.height * 0.15, box.width * 0.95, box.height * 0.95])
+# box = ax1.get_position()
+# ax1.set_position([box.x0, box.y0 + box.height * 0.15, box.width * 0.95, box.height * 0.95])
 # fig5.legend(['Inlet Pressure', 'Exit Pressure', 'Instantaneous Thrust', 'Cumulative Avg Thrust', 'Total Impulse'], loc='center', bbox_to_anchor=(0.5, 0.08), ncol=3, frameon=False )
-fig5.legend(['Inlet Pressure', 'Exit Pressure', 'ISP'], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False, fontsize=fontsize)
+# fig5.legend(['Inlet Pressure', 'Exit Pressure', 'ISP'], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False, fontsize=fontsize)
 
-ax1.grid(which='major', axis='both', linestyle='--')
+# ax1.grid(which='major', axis='both', linestyle='--')
 # plt.title('Single Plenum Discharge\n{0} mm Nozzle, {1} cm^3 Plenum'.format(d_star, vol*(100**3)), y=1.0, color='#413839')
 # fig5.suptitle('Single Plenum Discharge, Pressure and Impulse', fontsize=14, y=0.985)
 # fig5.suptitle('\t{0} mm Nozzle, {1} $cm^3$ Plenum'.format(d_star, vol*(100**3)), fontsize=10)
-plt.savefig('/mnt/d/OneDrive - UC Davis/HRVIP/Writing/AIAA SciTech 2019 Paper/Images/Sim Results/image.png')
+# plt.savefig('/mnt/d/OneDrive - UC Davis/HRVIP/Writing/AIAA SciTech 2019 Paper/Images/Sim Results/image.png')
 
 
 
@@ -662,4 +685,4 @@ plt.savefig('/mnt/d/OneDrive - UC Davis/HRVIP/Writing/AIAA SciTech 2019 Paper/Im
 
 
 # ---- Plot Everything
-plt.show()
+# plt.show()
