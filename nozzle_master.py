@@ -380,33 +380,46 @@ dia = 2*(vol*(3/4)/math.pi)**(1/3)  # Plenum diatmer , units of m
 # ---- Plot 2x Thrust(s), 2x Pressure(s), Impulse
 linewidth = 2
 fontsize = 12
-data = {'thrust': [x*1000 for x in list_of_thrusts], 'impulse': [x*1000 for x in cumulative_impulse], 'isp': ISP, 'reynolds': list_of_Re_stars, 'mach_exit': list_of_M_exits, 'rho_star': list_of_rho_stars}
+data = {'thrust': [x*1000 for x in list_of_thrusts], 'impulse': [x*1000 for x in cumulative_impulse], 'isp': ISP, 'mach_exit': list_of_M_exits, 'rho_star': list_of_rho_stars, 'reynolds': [x/1000 for x in list_of_Re_stars]}
+figname = {'thrust': 'Thrust', 'impulse': 'Net Impulse', 'isp': 'ISP', 'reynolds': 'Throat Reynold\'s Number', 'mach_exit': 'Exit Mach Number', 'rho_star': 'Throat Density'}
 times = {'thrust': time, 'impulse': time_offset, 'isp': time, 'reynolds': time, 'mach_exit': time, 'rho_star': time}
-labels = {'thrust': 'Thrust, mN', 'impulse': 'Total Impulse, mN-s', 'isp': 'ISP, s', 'reynolds': 'Reynold\'s Number', 'mach_exit': 'Exit Mach No.', 'rho_star': 'Throat Density (kg/m^3)'}
-colors = {'thrust': '#ff7f0e', 'impulse': '#413839', 'isp': '#cc0000', 'reynolds': '#2ecc71', 'mach_exit': '#ff7f0e', 'rho_star': '#ff7f0e'}
+labels = {'thrust': 'Thrust, $mN$', 'impulse': 'Impulse, $mN-s$', 'isp': 'ISP, $s$', 'reynolds': 'Re x $10^3$', 'mach_exit': 'Mach', 'rho_star': 'Density, $kg/m^3$'}
+legend_entries = {'thrust': 'Thrust', 'impulse': 'Net Impulse', 'isp': 'ISP', 'reynolds': 'Throat Reynold\'s Number', 'mach_exit': 'Exit Mach Number', 'rho_star': 'Throat Density'}
+# colors = {'thrust': '#ff7f0e', 'impulse': '#413839', 'isp': '#cc0000', 'reynolds': '#2ecc71', 'mach_exit': '#ff7f0e', 'rho_star': '#ff7f0e'}
+colors = {'thrust': '#ff7f0e', 'impulse': '#ff7f0e', 'isp': '#ff7f0e', 'reynolds': '#ff7f0e', 'mach_exit': '#ff7f0e', 'rho_star': '#ff7f0e'}
 
-for i, j in data.items():
-	fig, ax1 = plt.subplots(figsize=(6.5, 4), dpi=120)
-	ax1.set_xlabel('Time, s', color='#413839', fontsize=fontsize)
-	ax1.set_ylabel('Pressure, kPa', color='#413839', fontsize=fontsize)
-	ax1.plot(time, [x/1000 for x in list_of_P_ts], color='#1f77b4', label='Inlet Pressure, kPa', linestyle='-', linewidth=linewidth)
-	ax1.plot(time, [x/1000 for x in list_of_P_stars], color='#1f77b4', label='Throat Pressure, kPa', linestyle=':', linewidth=linewidth)
-	ax1.plot(time, [x/1000 for x in list_of_P_exits], color='#1f77b4', label='Exit Pressure, kPa', linestyle='--', linewidth=linewidth)
-	ax1.tick_params(colors='#413839')
+num_rows = 2
+num_cols = 3
+
+fig, axs = plt.subplots(num_rows, num_cols, figsize=(15, 8), dpi=100)
+for i, j in enumerate(data.items()):
+	# fig, ax1 = plt.subplots(figsize=(8, 5), dpi=90)
+	row = 0 if i < num_cols else 1
+	col = i % num_cols
+	axs[row, col].plot(time, [x/1000 for x in list_of_P_ts], color='#1f77b4', label='Inlet Pressure, kPa', linestyle='-', linewidth=linewidth)
+	axs[row, col].plot(time, [x/1000 for x in list_of_P_stars], color='#1f77b4', label='Throat Pressure, kPa', linestyle=':', linewidth=linewidth)
+	axs[row, col].plot(time, [x/1000 for x in list_of_P_exits], color='#1f77b4', label='Exit Pressure, kPa', linestyle='--', linewidth=linewidth)
+	axs[row, col].set_title(legend_entries[j[0]])
+	axs[row, col].set_xlabel('Time, $s$', color='#413839', fontsize=fontsize)
+	axs[row, col].set_ylabel('Pressure, kPa', color='#413839', fontsize=fontsize)
+	axs[row, col].tick_params(colors='#413839')
 	# ax1.set_ylim(0, 120)
 
-	ax2 = ax1.twinx()
-	ax2.set_ylabel(labels[i], color='#413839', fontsize=fontsize)
-	ax2.plot(times[i], data[i], color=colors[i], label=labels[i], linestyle='--', linewidth=linewidth)
-	ax2.tick_params(colors='#413839')
+	second_ax = axs[row, col].twinx()
+	second_ax.set_ylabel(labels[j[0]], color='#413839', fontsize=fontsize)
+	second_ax.plot(times[j[0]], data[j[0]], color=colors[j[0]], label=labels[j[0]], linestyle='-.', linewidth=linewidth)
+	second_ax.tick_params(colors='#413839')
+	second_ax.set_ylim(bottom=0)
 
-	box = ax1.get_position()
-	ax1.set_position([box.x0, box.y0 + box.height * 0.15, box.width * 0.95, box.height * 0.95])
-	fig.legend(['Inlet Pres', 'Throat Pres', 'Exit Pres', labels[i]], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=4, frameon=False, fontsize=fontsize)
-	ax1.grid(which='major', axis='both', linestyle='--')
+	box = axs[row, col].get_position()
+	axs[row, col].set_position([box.x0, box.y0, box.width * 1.05, box.height * 1.1])
+	axs[row, col].grid(which='major', axis='both', linestyle='--')
+	fig.canvas.set_window_title(figname[j[0]])
 
-	plt.show()
-
+fig.legend(['Inlet Pressure', 'Throat Pressure', 'Exit Pressure'], loc='center', bbox_to_anchor=(0.5, 0.05), ncol=3, frameon=True, fontsize=fontsize, edgecolor='255', borderpad=1)
+plt.tight_layout()
+plt.subplots_adjust(bottom=0.175)
+plt.show()
 
 # figs = {'fig1': fig1, 'fig2': fig2, 'fig3': fig3, 'fig4': fig4}
 
