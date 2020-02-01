@@ -1,6 +1,5 @@
 # Nozzle master control
-# Given a nozzle geometry and initial conditions, this code will sweep through a range of stagnation pressures and output the exit conditions
-# It's interesting to note that the critical conditions are dependent ONLY on geometry and not stagnation conditions
+# This code will estimate the performance of a nozzle + plenum assembly for given starting conditions and nozzle geometry
 from nozzle_code import nozzle
 import matplotlib.pyplot as plt
 from scipy import stats
@@ -13,38 +12,61 @@ from data_handling_funcs import *
 from matplotlib.lines import Line2D
 
 
-## ---- OPTIONS --------------------------------------------------------------------
+## ==================================================================================
+## ---- USER OPTIONS -----------------------------------------------------------------
+## ==================================================================================
 
-# Gas initial conditions
-P_t_init = 114.7 * 6894.76  # Max Total Pressure (Pa)
-P_amb = 14.7 * 6894.76  # Ambient Pressure (Pa)
-T_t_init = -55 + 273.15  # Total Temperature (K)
-vol = 30/10**6  # Plenum volume, units of m^3 (cm^3 / 10^6)
+gas_type = 'CO2'				# Gas Choices: R236fa, R134a, N2, CO2, air
+P_t_init = 114.7 * 6894.76  	# Init Total Pressure, units of Pa (psia * 6894.76)
+P_amb = 14.7 * 6894.76  		# Ambient Pressure, units of Pa (psia * 6894.76)
+T_t_init = -55 + 273.15  		# Init Total Temperature, units of K (C + 273.15)
+vol = 30 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
+time_step = 0.001				# Simulation time step
+d_star = 0.6 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
+half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
+expansion_ratio = 1.3225		# Nozzle expansion ratio (Exit Area / Throat Area)
+								# 	Inlet PSI ------- Ideal Expansion Ratio
+								# 	114.7 ----------- 1.8048
+								# 	80 -------------- 1.6173
+								# 	65 -------------- 1.3225
+figsize = (8.5, 11)				# Figure size (in)
+dpi = 150						# Figure dpi
 
 
-# no_of_points = 30
-time_step = 0.001
-
-# Nozzle geometry
-d_star = 0.0006  # Throat diameter (m)
-expansion_ratio = 1.3225  # 1.8048 for ideal expansion at 114.7 psi supply, 2.2447 for 164.7, 1.3225 for 0.2mm and 64.7 psi, 1.1235 for 0.3 and 44.7 psi
-# # PSI  ----- Exp. Ratio
-# # 114.7 --- 1.8048
-# # 65 --- 1.3225
-# # 
-half_angle = 10  # Conical Nozzle expansion angle (degrees)
 
 
-# Gas Choices: R236fa, R134a, N2, CO2, air
-gas_type = 'CO2'
-k = 1.298
-R = 8.314/0.044041  # Specific gas constant (J/kg-K)
+## ==================================================================================
+## ---- PRE-CALCULATIONS ------------------------------------------------------------
+## ==================================================================================
+
+if gas_type == 'R236fa':
+	k = 1.083  # Heat capacity ratio (Cp/Cv)
+	R = 8.314/0.152039  # Specific gas constant (J/kg-K)
+
+if gas_type == 'R134a':
+	k = 1.127  # Override value to compare results to MST paper
+	R = 8.314/0.10203  # Specific gas constant (J/kg-K)
+
+if gas_type == 'N2':
+	k = 1.039
+	R = 8.314/0.028014  # Specific gas constant (J/kg-K)
+	
+if gas_type == 'CO2':
+	k = 1.289
+	R = 8.314/0.04401  # Specific gas constant (J/kg-K)
+
+if gas_type == 'air':
+	k = 1.401
+	R = 8.314/0.0289645  # Specific gas constant (J/kg-K)
 
 density_init = P_t_init/(R*(T_t_init))  # Units of kg/m^3 (or g/l)
-m_init = density_init*(vol)  # Units of kg
+m_init = density_init*vol  # Units of kg
+dia = 2*(vol*(3/4)/math.pi)**(1/3)  # Plenum diatmer , units of m
 
 
-## ---- DO THE THING ----------------------------------------------------------------
+## ==================================================================================
+## ---- SET UP DATA LISTS -----------------------------------------------------------
+## ==================================================================================
 
 # list_of_P_ts = list(np.linspace (P_t_max, P_amb, no_of_points))
 list_of_P_ts = [P_t_init]
@@ -68,6 +90,12 @@ list_of_Re_stars = []
 time = [0]
 m_gas = [m_init]
 
+
+
+
+## ==================================================================================
+## ---- EXECUTE LOOP ----------------------------------------------------------------
+## ==================================================================================
 # 0. Start with init P, T, m_gas
 # 1. Run nozzle given P, T
 # 2. Return m_dot, use to update m_gas assuming a specific time step
@@ -75,7 +103,6 @@ m_gas = [m_init]
 # 4. Use new density to update P, T assuming polytropic process + isentropic + ideal gas
 # 5. Repeat 1-4 until P < 35
 
-# for P_t in list_of_P_ts:
 while list_of_P_ts[-1] > P_amb:
 	m_dot, M_crit_sub, M_crit_sup, PR_crit_sub, PR_crit_sup, PR_exit_shock, M_exit_behindshock, M_exit, P_exit, v_exit, F, P_star, T_star, rho_star, Re_star, T_exit, rho_exit = nozzle(list_of_P_ts[-1], list_of_T_ts[-1], P_amb, d_star, expansion_ratio, half_angle, gas_type)
 
@@ -99,116 +126,16 @@ while list_of_P_ts[-1] > P_amb:
 	list_of_P_ts.append( list_of_P_ts[-1]*(list_of_chamber_densities[-1]/list_of_chamber_densities[-2])**k )
 
 
- # By the nature of this loop, anything that has an init value will end up with one extra element in its list
- # So we must manually remove the last element once all is said and done in order to make all the array lengths the same
- # This is due to the fact that the last element will be calculated for Pt < P_amb, which is not realistic.
+# By the nature of this loop, anything that has an init value will end up with one extra element in its list
+# So we must manually remove the last element once all is said and done in order to make all the array lengths the same
+# This is due to the fact that the last element will be calculated for Pt < P_amb, which is not realistic.
 del list_of_P_ts[-1], list_of_T_ts[-1], list_of_chamber_densities[-1], time[-1], m_gas[-1]
 
-## ---- UPDATE THE THING ------------------------------------------------------------
-# Search through the list of Pressure Ratios to find where the two critical conditions and the nozzle shock condition fit in
-# Then at each of those Pressure Ratios, determine the Total Pressure and run it through nozzle() to get the exit conditions
-# Then update the lists by inserting the exit conditions at the appropriate location
-
-# for i in range(len(list_of_pressure_ratios)):
-# 	if ((1/PR_crit_sub) > list_of_pressure_ratios[i] and (1/PR_crit_sub) < list_of_pressure_ratios[i+1]) or ((1/PR_crit_sub) < list_of_pressure_ratios[i] and (1/PR_crit_sub) > list_of_pressure_ratios[i+1]):
-# 		P_t = PR_crit_sub*P_amb
-
-# 		# Use linear interpolation to estimate the temperature at which this event occurs
-# 		m = (list_of_T_ts[i+1]-list_of_T_ts[i])/(list_of_P_ts[i+1]-list_of_P_ts[i])
-# 		T_t = m*(P_t - list_of_P_ts[i]) + list_of_T_ts[i]
-
-# 		# Use linear interpolation to estimate the time at which this event occurs
-# 		m = (time[i+1]-time[i])/(list_of_P_ts[i+1]-list_of_P_ts[i])
-# 		time_now = m*(P_t - list_of_P_ts[i]) + time[i]
-
-# 		m_dot, M_crit_sub, M_crit_sup, PR_crit_sub, PR_crit_sup, PR_exit_shock, M_exit_behindshock, M_exit, P_exit, v_exit, F, P_star, T_star, rho_star, T_exit, rho_exit = nozzle(P_t, T_t, P_amb, d_star, expansion_ratio, half_angle, gas_type)
-
-# 		list_of_P_ts.insert(i+1, P_t)
-# 		list_of_T_ts.insert(i+1, T_t)
-# 		time.insert(i+1, time_now)
-# 		list_of_mdots.insert(i+1, m_dot*1000)
-# 		list_of_P_exits.insert(i+1, P_exit)
-# 		list_of_pressure_ratios.insert(i+1, P_exit/P_t)
-# 		list_of_P_stars.append(P_star)
-# 		list_of_M_exits.insert(i+1, M_exit)
-# 		list_of_v_exits.insert(i+1, v_exit)
-# 		list_of_thrusts.insert(i+1, F)
-# 		list_of_T_stars.append(T_star)
-# 		list_of_rho_stars.append(rho_star)
-# 		list_of_T_exits.append(T_exit)
-# 		list_of_rho_exits.append(rho_exit)
-# 		print("Flow conditions calculated at subsonic critical pressure ratio!")
-# 		break
-# 	else:
-# 		pass
-
-# for i in range(len(list_of_pressure_ratios)):
-# 	if (1/PR_exit_shock > list_of_pressure_ratios[i] and 1/PR_exit_shock < list_of_pressure_ratios[i+1]) or (1/PR_exit_shock < list_of_pressure_ratios[i] and 1/PR_exit_shock > list_of_pressure_ratios[i+1]):
-# 		P_t = PR_exit_shock*P_amb
-# 		# Use linear interpolation to estimate the temperature at which this event occurs
-# 		m = (list_of_T_ts[i+1]-list_of_T_ts[i])/(list_of_P_ts[i+1]-list_of_P_ts[i])
-# 		T_t = m*(P_t - list_of_P_ts[i]) + list_of_T_ts[i]
-
-# 		# Use linear interpolation to estimate the time at which this event occurs
-# 		m = (time[i+1]-time[i])/(list_of_P_ts[i+1]-list_of_P_ts[i])
-# 		time_now = m*(P_t - list_of_P_ts[i]) + time[i]
-
-# 		m_dot, M_crit_sub, M_crit_sup, PR_crit_sub, PR_crit_sup, PR_exit_shock, M_exit_behindshock, M_exit, P_exit, v_exit, F, P_star, T_star, rho_star, T_exit, rho_exit = nozzle(P_t, T_t, P_amb, d_star, expansion_ratio, half_angle, gas_type)
-
-# 		list_of_P_ts.insert(i+1, P_t)
-# 		list_of_T_ts.insert(i+1, T_t)
-# 		time.insert(i+1, time_now)
-# 		list_of_mdots.insert(i+1, m_dot*1000)
-# 		list_of_P_exits.insert(i+1, P_exit)
-# 		list_of_pressure_ratios.insert(i+1, P_exit/P_t)
-# 		list_of_P_stars.append(P_star)
-# 		list_of_M_exits.insert(i+1, M_exit)
-# 		list_of_v_exits.insert(i+1, v_exit)
-# 		list_of_thrusts.insert(i+1, F)
-# 		list_of_T_stars.append(T_star)
-# 		list_of_rho_stars.append(rho_star)
-# 		list_of_T_exits.append(T_exit)
-# 		list_of_rho_exits.append(rho_exit)
-# 		print("Flow conditions calculated at shock-at-exit pressure ratio!")
-# 		break
-# 	else:
-# 		pass
-
-# for i in range(len(list_of_P_exits)):
-# 	if (list_of_P_exits[i] > P_amb and list_of_P_exits[i+1] < P_amb) or (list_of_P_exits[i] < P_amb and list_of_P_exits[i+1] > P_amb):
-# 		P_t = PR_crit_sup*P_amb
-# 		# Use linear interpolation to estimate the temperature at which this event occurs
-# 		m = (list_of_T_ts[i+1]-list_of_T_ts[i])/(list_of_P_ts[i+1]-list_of_P_ts[i])
-# 		T_t = m*(P_t - list_of_P_ts[i]) + list_of_T_ts[i]
-
-# 		# Use linear interpolation to estimate the time at which this event occurs
-# 		m = (time[i+1]-time[i])/(list_of_P_ts[i+1]-list_of_P_ts[i])
-# 		time_now = m*(P_t - list_of_P_ts[i]) + time[i]
-
-# 		m_dot, M_crit_sub, M_crit_sup, PR_crit_sub, PR_crit_sup, PR_exit_shock, M_exit_behindshock, M_exit, P_exit, v_exit, F, P_star, T_star, rho_star, T_exit, rho_exit = nozzle(P_t, T_t, P_amb, d_star, expansion_ratio, half_angle, gas_type)
-
-# 		list_of_P_ts.insert(i+1, P_t)
-# 		list_of_T_ts.insert(i+1, T_t)
-# 		time.insert(i+1, time_now)
-# 		list_of_mdots.insert(i+1, m_dot*1000)
-# 		list_of_P_exits.insert(i+1, P_exit)
-# 		list_of_pressure_ratios.insert(i+1, P_exit/P_t)
-# 		list_of_P_stars.append(P_star)
-# 		list_of_M_exits.insert(i+1, M_exit)
-# 		list_of_v_exits.insert(i+1, v_exit)
-# 		list_of_thrusts.insert(i+1, F)
-# 		list_of_T_stars.append(T_star)
-# 		list_of_rho_stars.append(rho_star)
-# 		list_of_T_exits.append(T_exit)
-# 		list_of_rho_exits.append(rho_exit)
-# 		print("Flow conditions calculated at supersonic critical pressure ratio!")
-# 		break
-# 	else:
-# 		pass
 
 
-
-## ---- CALC SOME OTHER STUFF ------------------------------------------------------
+## ==================================================================================
+## ---- POST-CALCULATIONS -----------------------------------------------------------
+## ==================================================================================
 cumulative_impulse = []
 cumulative_mass = []
 average_thrust = []
@@ -230,12 +157,10 @@ for i in range(0, len(time)):
 	ISP.append( 1000*list_of_thrusts[i]/(9.81*list_of_mdots[i]) )
 
 
-dia = 2*(vol*(3/4)/math.pi)**(1/3)  # Plenum diatmer , units of m
 
-
-
-## ---- OUTPUT THE STUFF -----------------------------------------------------------
-
+## ==================================================================================
+## ---- SAVE TO CSV -----------------------------------------------------------------
+## ==================================================================================
 # list_of_NaNs = [np.NaN for i in range(len(list_of_P_ts)-1)]
 
 # list_of_M_crit_subs = [M_crit_sub]
@@ -270,9 +195,61 @@ dia = 2*(vol*(3/4)/math.pi)**(1/3)  # Plenum diatmer , units of m
 # df.to_csv("nozzle_pressure.csv", index=False)
 
 
-## ---- PLOT THE STUFF -----------------------------------------------------------
+## ==================================================================================
+## ---- PLOT ------------------------------------------------------------------------
+## ==================================================================================
+
+# ---- Plot 2x3 [Thrust, Impulse, ISP, Re, Ma, Density] all vs. Inlet + Throat + Exit Pressure
+
+linewidth = 2
+fontsize = 12
+data = {'thrust': [x*1000 for x in list_of_thrusts], 'impulse': [x*1000 for x in cumulative_impulse], 'isp': ISP, 'mach_exit': list_of_M_exits, 'rho_star': list_of_rho_stars, 'reynolds': [x/1000 for x in list_of_Re_stars]}
+figname = {'thrust': 'Thrust', 'impulse': 'Net Impulse', 'isp': 'ISP', 'reynolds': 'Throat Reynold\'s Number', 'mach_exit': 'Exit Mach Number', 'rho_star': 'Throat Density'}
+times = {'thrust': time, 'impulse': time_offset, 'isp': time, 'reynolds': time, 'mach_exit': time, 'rho_star': time}
+labels = {'thrust': 'Thrust, $mN$', 'impulse': 'Impulse, $mN-s$', 'isp': 'ISP, $s$', 'reynolds': 'Re x $10^3$', 'mach_exit': 'Mach', 'rho_star': 'Density, $kg/m^3$'}
+legend_entries = {'thrust': 'Thrust', 'impulse': 'Net Impulse', 'isp': 'ISP', 'reynolds': 'Throat Reynold\'s Number', 'mach_exit': 'Exit Mach Number', 'rho_star': 'Throat Density'}
+colors = {'thrust': '#ff7f0e', 'impulse': '#ff7f0e', 'isp': '#ff7f0e', 'reynolds': '#ff7f0e', 'mach_exit': '#ff7f0e', 'rho_star': '#ff7f0e'}
+
+num_rows = 3
+num_cols = 2
+
+fig, axs = plt.subplots(num_rows, num_cols, figsize=figsize, dpi=dpi)
+for i, j in enumerate(data.items()):
+	# fig, ax1 = plt.subplots(figsize=(8, 5), dpi=90)
+	col = 0 if i < num_rows else 1
+	row = i % num_rows
+	axs[row, col].plot(time, [x/1000 for x in list_of_P_ts], color='#1f77b4', label='Inlet Pressure, kPa', linestyle='-', linewidth=linewidth)
+	axs[row, col].plot(time, [x/1000 for x in list_of_P_stars], color='#1f77b4', label='Throat Pressure, kPa', linestyle=':', linewidth=linewidth)
+	axs[row, col].plot(time, [x/1000 for x in list_of_P_exits], color='#1f77b4', label='Exit Pressure, kPa', linestyle='--', linewidth=linewidth)
+	axs[row, col].set_title(legend_entries[j[0]])
+	axs[row, col].set_xlabel('Time, $s$', color='#413839', fontsize=fontsize)
+	axs[row, col].set_ylabel('Pressure, kPa', color='#413839', fontsize=fontsize)
+	axs[row, col].tick_params(colors='#413839')
+	# ax1.set_ylim(0, 120)
+
+	second_ax = axs[row, col].twinx()
+	second_ax.set_ylabel(labels[j[0]], color='#413839', fontsize=fontsize)
+	second_ax.plot(times[j[0]], data[j[0]], color=colors[j[0]], label=labels[j[0]], linestyle='-.', linewidth=linewidth)
+	second_ax.tick_params(colors='#413839')
+	second_ax.set_ylim(bottom=0)
+
+	box = axs[row, col].get_position()
+	axs[row, col].set_position([box.x0, box.y0, box.width * 1.05, box.height * 1.1])
+	axs[row, col].grid(which='major', axis='both', linestyle='--')
+	fig.canvas.set_window_title(figname[j[0]])
+
+fig.suptitle(r'Inlet, Throat, and Exit Pressure vs. Nozzle Metrics ($\varnothing${0} mm, $\lambda$={1})'.format(d_star*1000, expansion_ratio))
+fig.legend(['Inlet Pressure', 'Throat Pressure', 'Exit Pressure'], loc='center', bbox_to_anchor=(0.5, 0.05), ncol=3, frameon=True, fontsize=fontsize, edgecolor='255', borderpad=1)
+plt.tight_layout()
+plt.subplots_adjust(bottom=0.15)
+plt.subplots_adjust(top=0.925)
+plt.show()
+
+# print('Nozzle Exit Pressure: ', list_of_P_exits[0] / 6894.76)
+
 
 # ---- 1) Plot Inlet Pressures and Exit Velocity
+
 # fig1, ax1 = plt.subplots(figsize=(8, 5), dpi=90)
 
 # ax1.set_xlabel('Time (s)', color='#413839')
@@ -297,7 +274,9 @@ dia = 2*(vol*(3/4)/math.pi)**(1/3)  # Plenum diatmer , units of m
 # plt.title('Chamber + Exit Pres. & Exit Velocity for Single Plenum Discharge', y=1.03, color='#413839')
 
 
+
 # ---- 2) Plot Instantaneous Thrust, Average Thrust, Total Impulse, and ISP
+
 # fig2, ax1 = plt.subplots(figsize=(8, 5), dpi=90)
 # ax1.set_xlabel('Time (s)', color='#413839')
 # ax1.set_ylabel('Thrust (mN)', color='#413839')
@@ -326,7 +305,9 @@ dia = 2*(vol*(3/4)/math.pi)**(1/3)  # Plenum diatmer , units of m
 # plt.title('Thrust & Total Impulse for Single Plenum Discharge', y=1.03, color='#413839')
 
 
+
 # ---- Plot Mass Flow Rate and Total Mass
+
 # fig3, ax1 = plt.subplots(figsize=(8, 5), dpi=90)
 # ax1.set_xlabel('Time (s)', color='#413839')
 # ax1.set_ylabel('Mass Flow Rate (g/s)', color='#413839')
@@ -349,7 +330,9 @@ dia = 2*(vol*(3/4)/math.pi)**(1/3)  # Plenum diatmer , units of m
 # plt.title('Mass Flow Rate & Total Propellant Mass Consumed for Single Plenum Discharge', y=1.03, color='#413839')
 
 
+
 # ---- Plot Critical Pressure, Critical Temperature, and Critical Density
+
 # fig4, ax1 = plt.subplots(figsize=(8.5, 5), dpi=90)
 # ax1.set_xlabel('Time (s)', color='#413839')
 # ax1.set_ylabel('Temperature (K)', color='#413839')
@@ -377,49 +360,7 @@ dia = 2*(vol*(3/4)/math.pi)**(1/3)  # Plenum diatmer , units of m
 
 
 
-# ---- Plot 2x Thrust(s), 2x Pressure(s), Impulse
-linewidth = 2
-fontsize = 12
-data = {'thrust': [x*1000 for x in list_of_thrusts], 'impulse': [x*1000 for x in cumulative_impulse], 'isp': ISP, 'mach_exit': list_of_M_exits, 'rho_star': list_of_rho_stars, 'reynolds': [x/1000 for x in list_of_Re_stars]}
-figname = {'thrust': 'Thrust', 'impulse': 'Net Impulse', 'isp': 'ISP', 'reynolds': 'Throat Reynold\'s Number', 'mach_exit': 'Exit Mach Number', 'rho_star': 'Throat Density'}
-times = {'thrust': time, 'impulse': time_offset, 'isp': time, 'reynolds': time, 'mach_exit': time, 'rho_star': time}
-labels = {'thrust': 'Thrust, $mN$', 'impulse': 'Impulse, $mN-s$', 'isp': 'ISP, $s$', 'reynolds': 'Re x $10^3$', 'mach_exit': 'Mach', 'rho_star': 'Density, $kg/m^3$'}
-legend_entries = {'thrust': 'Thrust', 'impulse': 'Net Impulse', 'isp': 'ISP', 'reynolds': 'Throat Reynold\'s Number', 'mach_exit': 'Exit Mach Number', 'rho_star': 'Throat Density'}
-# colors = {'thrust': '#ff7f0e', 'impulse': '#413839', 'isp': '#cc0000', 'reynolds': '#2ecc71', 'mach_exit': '#ff7f0e', 'rho_star': '#ff7f0e'}
-colors = {'thrust': '#ff7f0e', 'impulse': '#ff7f0e', 'isp': '#ff7f0e', 'reynolds': '#ff7f0e', 'mach_exit': '#ff7f0e', 'rho_star': '#ff7f0e'}
 
-num_rows = 2
-num_cols = 3
-
-fig, axs = plt.subplots(num_rows, num_cols, figsize=(15, 8), dpi=100)
-for i, j in enumerate(data.items()):
-	# fig, ax1 = plt.subplots(figsize=(8, 5), dpi=90)
-	row = 0 if i < num_cols else 1
-	col = i % num_cols
-	axs[row, col].plot(time, [x/1000 for x in list_of_P_ts], color='#1f77b4', label='Inlet Pressure, kPa', linestyle='-', linewidth=linewidth)
-	axs[row, col].plot(time, [x/1000 for x in list_of_P_stars], color='#1f77b4', label='Throat Pressure, kPa', linestyle=':', linewidth=linewidth)
-	axs[row, col].plot(time, [x/1000 for x in list_of_P_exits], color='#1f77b4', label='Exit Pressure, kPa', linestyle='--', linewidth=linewidth)
-	axs[row, col].set_title(legend_entries[j[0]])
-	axs[row, col].set_xlabel('Time, $s$', color='#413839', fontsize=fontsize)
-	axs[row, col].set_ylabel('Pressure, kPa', color='#413839', fontsize=fontsize)
-	axs[row, col].tick_params(colors='#413839')
-	# ax1.set_ylim(0, 120)
-
-	second_ax = axs[row, col].twinx()
-	second_ax.set_ylabel(labels[j[0]], color='#413839', fontsize=fontsize)
-	second_ax.plot(times[j[0]], data[j[0]], color=colors[j[0]], label=labels[j[0]], linestyle='-.', linewidth=linewidth)
-	second_ax.tick_params(colors='#413839')
-	second_ax.set_ylim(bottom=0)
-
-	box = axs[row, col].get_position()
-	axs[row, col].set_position([box.x0, box.y0, box.width * 1.05, box.height * 1.1])
-	axs[row, col].grid(which='major', axis='both', linestyle='--')
-	fig.canvas.set_window_title(figname[j[0]])
-
-fig.legend(['Inlet Pressure', 'Throat Pressure', 'Exit Pressure'], loc='center', bbox_to_anchor=(0.5, 0.05), ncol=3, frameon=True, fontsize=fontsize, edgecolor='255', borderpad=1)
-plt.tight_layout()
-plt.subplots_adjust(bottom=0.175)
-plt.show()
 
 # figs = {'fig1': fig1, 'fig2': fig2, 'fig3': fig3, 'fig4': fig4}
 
