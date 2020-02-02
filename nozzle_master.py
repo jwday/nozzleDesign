@@ -136,6 +136,7 @@ del list_of_P_ts[-1], list_of_T_ts[-1], list_of_chamber_densities[-1], time[-1],
 ## ==================================================================================
 ## ---- POST-CALCULATIONS -----------------------------------------------------------
 ## ==================================================================================
+
 cumulative_impulse = []
 cumulative_mass = []
 average_thrust = []
@@ -203,43 +204,97 @@ for i in range(0, len(time)):
 
 linewidth = 2
 fontsize = 12
-data = {'thrust': [x*1000 for x in list_of_thrusts], 'impulse': [x*1000 for x in cumulative_impulse], 'isp': ISP, 'mach_exit': list_of_M_exits, 'rho_star': list_of_rho_stars, 'reynolds': [x/1000 for x in list_of_Re_stars]}
-figname = {'thrust': 'Thrust', 'impulse': 'Net Impulse', 'isp': 'ISP', 'reynolds': 'Throat Reynold\'s Number', 'mach_exit': 'Exit Mach Number', 'rho_star': 'Throat Density'}
-times = {'thrust': time, 'impulse': time_offset, 'isp': time, 'reynolds': time, 'mach_exit': time, 'rho_star': time}
-labels = {'thrust': 'Thrust, $mN$', 'impulse': 'Impulse, $mN-s$', 'isp': 'ISP, $s$', 'reynolds': 'Re x $10^3$', 'mach_exit': 'Mach', 'rho_star': 'Density, $kg/m^3$'}
-legend_entries = {'thrust': 'Thrust', 'impulse': 'Net Impulse', 'isp': 'ISP', 'reynolds': 'Throat Reynold\'s Number', 'mach_exit': 'Exit Mach Number', 'rho_star': 'Throat Density'}
-colors = {'thrust': '#ff7f0e', 'impulse': '#ff7f0e', 'isp': '#ff7f0e', 'reynolds': '#ff7f0e', 'mach_exit': '#ff7f0e', 'rho_star': '#ff7f0e'}
+
+data = 		{ 'thrust': [x*1000 for x in list_of_thrusts], 
+			  'impulse': [x*1000 for x in cumulative_impulse], 	
+			  'isp': ISP, 			
+			  'mach_exit': list_of_M_exits, 		
+			  'rho_star': list_of_rho_stars, 		
+			  'reynolds': [x/1000 for x in list_of_Re_stars] }
+
+figname = 	{ 'thrust': 'Thrust', 							
+			  'impulse': 'Net Impulse', 							
+			  'isp': '$I_{SP}$', 			
+			  'mach_exit': 'Exit Mach Number', 	
+			  'rho_star': 'Throat Density', 		
+			  'reynolds': 'Throat Reynold\'s Number' }
+
+times = 	{ 'thrust': time, 								
+			  'impulse': time_offset, 							
+			  'isp': time, 			
+			  'mach_exit': time, 					
+			  'rho_star': time, 					
+			  'reynolds': time }
+
+ylabels = 	{ 'thrust': 'Thrust, $mN$', 						
+			  'impulse': 'Impulse, $mN-s$', 						
+			  'isp': '$I_{SP}$, $s$', 		
+			  'mach_exit': 'Mach', 				
+			  'rho_star': 'Density, $kg/m^3$', 	
+			  'reynolds': 'Re x $10^3$' }
+
+# legend = 	{ 'thrust': 'Thrust', 							
+# 			  'impulse': 'Net Impulse', 							
+# 			  'isp': '$I_{SP}$', 			
+# 			  'mach_exit': 'Exit Mach Number', 	
+# 			  'rho_star': 'Throat Density', 		
+# 			  'reynolds': 'Throat Reynold\'s Number' }
+
+# colors = 	{ 'thrust': '#ff7f0e', 							
+# 			  'impulse': '#ff7f0e', 								
+# 			  'isp': '#ff7f0e', 		
+# 			  'mach_exit': '#ff7f0e', 			
+# 			  'rho_star': '#ff7f0e', 				
+# 			  'reynolds': '#ff7f0e' }
 
 num_rows = 3
 num_cols = 2
 
 fig, axs = plt.subplots(num_rows, num_cols, figsize=figsize, dpi=dpi)
 for i, j in enumerate(data.items()):
-	# fig, ax1 = plt.subplots(figsize=(8, 5), dpi=90)
-	col = 0 if i < num_rows else 1
-	row = i % num_rows
-	axs[row, col].plot(time, [x/1000 for x in list_of_P_ts], color='#1f77b4', label='Inlet Pressure, kPa', linestyle='-', linewidth=linewidth)
-	axs[row, col].plot(time, [x/1000 for x in list_of_P_stars], color='#1f77b4', label='Throat Pressure, kPa', linestyle=':', linewidth=linewidth)
-	axs[row, col].plot(time, [x/1000 for x in list_of_P_exits], color='#1f77b4', label='Exit Pressure, kPa', linestyle='--', linewidth=linewidth)
-	axs[row, col].set_title(legend_entries[j[0]])
-	axs[row, col].set_xlabel('Time, $s$', color='#413839', fontsize=fontsize)
-	axs[row, col].set_ylabel('Pressure, kPa', color='#413839', fontsize=fontsize)
-	axs[row, col].tick_params(colors='#413839')
-	# ax1.set_ylim(0, 120)
+	row = math.floor(i/2 % (len(data)/2))
+	col = i % num_cols
 
+	# --- For Pressure on Secondary Axis ----
+	axs[row, col].plot(times[j[0]], data[j[0]], color='#ff7f0e', label=ylabels[j[0]], linestyle='-.', linewidth=linewidth)
+	axs[row, col].set_title(figname[j[0]])
+	axs[row, col].set_xlabel('Time, $s$', color='#413839', fontsize=fontsize)
+	axs[row, col].set_ylabel(ylabels[j[0]], color='#413839', fontsize=fontsize)
+	axs[row, col].tick_params(colors='#413839')
+	axs[row, col].set_ylim(bottom=0)
+	
 	second_ax = axs[row, col].twinx()
-	second_ax.set_ylabel(labels[j[0]], color='#413839', fontsize=fontsize)
-	second_ax.plot(times[j[0]], data[j[0]], color=colors[j[0]], label=labels[j[0]], linestyle='-.', linewidth=linewidth)
+	line1, = second_ax.plot(time, [x/1000 for x in list_of_P_ts], color='#1f77b4', label='pres_inlet', linestyle='-', linewidth=linewidth)
+	line2, = second_ax.plot(time, [x/1000 for x in list_of_P_stars], color='#1f77b4', label='pres_throat', linestyle=':', linewidth=linewidth)
+	line3, = second_ax.plot(time, [x/1000 for x in list_of_P_exits], color='#1f77b4', label='pres_exit', linestyle='--', linewidth=linewidth)
+	second_ax.set_ylabel('Pressure, kPa', color='#413839', fontsize=fontsize)
 	second_ax.tick_params(colors='#413839')
-	second_ax.set_ylim(bottom=0)
+
+
+	# --- For Pressure on Primary Axis ----
+	# axs[row, col].plot(time, [x/1000 for x in list_of_P_ts], color='#1f77b4', label='Inlet Pressure, kPa', linestyle='-', linewidth=linewidth)
+	# axs[row, col].plot(time, [x/1000 for x in list_of_P_stars], color='#1f77b4', label='Throat Pressure, kPa', linestyle=':', linewidth=linewidth)
+	# axs[row, col].plot(time, [x/1000 for x in list_of_P_exits], color='#1f77b4', label='Exit Pressure, kPa', linestyle='--', linewidth=linewidth)
+	# axs[row, col].set_title(figname[j[0]])
+	# axs[row, col].set_xlabel('Time, $s$', color='#413839', fontsize=fontsize)
+	# axs[row, col].set_ylabel('Pressure, kPa', color='#413839', fontsize=fontsize)
+	# axs[row, col].tick_params(colors='#413839')
+
+	# second_ax = axs[row, col].twinx()
+	# second_ax.plot(times[j[0]], data[j[0]], color='#ff7f0e', label=ylabels[j[0]], linestyle='-.', linewidth=linewidth)
+	# second_ax.set_ylabel(ylabels[j[0]], color='#413839', fontsize=fontsize)
+	# second_ax.tick_params(colors='#413839')
+	# second_ax.set_ylim(bottom=0)
+
 
 	box = axs[row, col].get_position()
 	axs[row, col].set_position([box.x0, box.y0, box.width * 1.05, box.height * 1.1])
 	axs[row, col].grid(which='major', axis='both', linestyle='--')
-	fig.canvas.set_window_title(figname[j[0]])
+	fig.canvas.set_window_title('Nozzle Performance Metrics')
+	
 
 fig.suptitle(r'Inlet, Throat, and Exit Pressure vs. Nozzle Metrics ($\varnothing${0} mm, $\lambda$={1})'.format(d_star*1000, expansion_ratio))
-fig.legend(['Inlet Pressure', 'Throat Pressure', 'Exit Pressure'], loc='center', bbox_to_anchor=(0.5, 0.05), ncol=3, frameon=True, fontsize=fontsize, edgecolor='255', borderpad=1)
+fig.legend((line1, line2, line3), ('Inlet Pressure', 'Throat Pressure', 'Exit Pressure'), loc='center', bbox_to_anchor=(0.5, 0.05), ncol=3, frameon=True, fontsize=fontsize, edgecolor='255', borderpad=1)
 plt.tight_layout()
 plt.subplots_adjust(bottom=0.15)
 plt.subplots_adjust(top=0.925)
