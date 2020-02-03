@@ -39,7 +39,7 @@ def nozzle(P_t, T_t, P_amb, d_throat, expansion_ratio, half_angle, gas_type):
 	P_throat = P_t*(2/(k+1))**(k/(k-1)) # Pa
 	rho_throat = rho_t*(2/(k+1))**(1/(k-1)) # kg/m^3
 	c_throat = np.sqrt(k*R*T_throat) # m/s
-	mu_throat = (2*(10**-9)*(T_throat**3) - 5*(10**-6)*(T_throat**2) + 0.007*T_throat + 0.0613)*(10**-5) # Pa-s
+	mu_throat = (0.0492*T_throat + 0.3276)*(10**-6) # Pa-s, Emperical formula derived from NIST data. Viscosity is highly invariable with pressure between 0.1 and 0.8 MPa, and only somewhat variable with temperature, and linearly at that. Use 13 uPa-s in a pinch.
 	Re_throat = rho_throat*c_throat*d_throat/mu_throat
 
 	# Exit Conditions
@@ -171,7 +171,7 @@ def nozzle(P_t, T_t, P_amb, d_throat, expansion_ratio, half_angle, gas_type):
 		T_throat = T_t*Z_func(M_throat)**(-1)
 		c_throat = math.sqrt(k*R*T_throat)
 		v_throat = M_throat*c_throat
-		mu_throat = (2*(10**-9)*(T_throat**3) - 5*(10**-6)*(T_throat**2) + 0.007*T_throat + 0.0613)*(10**-5) # kg/(m-s). NEEDS REWORKING
+		mu_throat = (0.0492*T_throat + 0.3276)*(10**-6) # Pa-s
 		Re_throat = rho_throat*v_throat*d_throat/mu_throat
 
 	# Q_scfm = (m_dot/1.98)*35.3147*60  # Volumetric flow rate (m^3/s)

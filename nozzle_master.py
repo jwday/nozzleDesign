@@ -19,7 +19,7 @@ from matplotlib.lines import Line2D
 gas_type = 'CO2'				# Gas Choices: R236fa, R134a, N2, CO2, air
 P_t_init = 114.7 * 6894.76  	# Init Total Pressure, units of Pa (psia * 6894.76)
 P_amb = 14.7 * 6894.76  		# Ambient Pressure, units of Pa (psia * 6894.76)
-T_t_init = -55 + 273.15  		# Init Total Temperature, units of K (C + 273.15)
+T_t_init = 0 + 273.15  		# Init Total Temperature, units of K (C + 273.15)
 vol = 30 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
 time_step = 0.001				# Simulation time step
 d_star = 0.6 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
@@ -100,7 +100,7 @@ m_gas = [m_init]
 # 1. Run nozzle given P, T
 # 2. Return m_dot, use to update m_gas assuming a specific time step
 # 3. Use m_gas to determine new density
-# 4. Use new density to update P, T assuming polytropic process + isentropic + ideal gas
+# 4. Use new density to update P, T assuming polytropic process + isentropic + ideal gas # NO NO NO. "isentropic" assumes NO EXCHANGE OF MATTER. THIS IS INVALID.
 # 5. Repeat 1-4 until P < 35
 
 while list_of_P_ts[-1] > P_amb:
@@ -122,7 +122,11 @@ while list_of_P_ts[-1] > P_amb:
 	time.append(time[-1] + time_step)
 	m_gas.append(m_gas[-1] - m_dot*time_step)
 	list_of_chamber_densities.append(m_gas[-1]/vol)
-	list_of_T_ts.append( list_of_T_ts[-1]*(list_of_chamber_densities[-1]/list_of_chamber_densities[-2])**(k-1) )
+
+	# THIS IS INVALD. You have to...
+	# 1. Determine the NEW enthalpy after some of the mass has left.
+	# list_of_T_ts.append( list_of_T_ts[-1]*(list_of_chamber_densities[-1]/list_of_chamber_densities[-2])**(k-1) )
+	list_of_T_ts.append( list_of_T_ts[-1] )
 	list_of_P_ts.append( list_of_P_ts[-1]*(list_of_chamber_densities[-1]/list_of_chamber_densities[-2])**k )
 
 
@@ -210,28 +214,32 @@ data = 		{ 'thrust': [x*1000 for x in list_of_thrusts],
 			  'isp': ISP, 			
 			  'mach_exit': list_of_M_exits, 		
 			  'rho_star': list_of_rho_stars, 		
-			  'reynolds': [x/1000 for x in list_of_Re_stars] }
+			  'reynolds': [x/1000 for x in list_of_Re_stars],
+			  't_star': list_of_T_stars }
 
 figname = 	{ 'thrust': 'Thrust', 							
 			  'impulse': 'Net Impulse', 							
 			  'isp': '$I_{SP}$', 			
 			  'mach_exit': 'Exit Mach Number', 	
 			  'rho_star': 'Throat Density', 		
-			  'reynolds': 'Throat Reynold\'s Number' }
+			  'reynolds': 'Throat Reynold\'s Number',
+			  't_star': 'Throat Temperature' }
 
 times = 	{ 'thrust': time, 								
 			  'impulse': time_offset, 							
 			  'isp': time, 			
 			  'mach_exit': time, 					
 			  'rho_star': time, 					
-			  'reynolds': time }
+			  'reynolds': time,
+			  't_star': time }
 
 ylabels = 	{ 'thrust': 'Thrust, $mN$', 						
 			  'impulse': 'Impulse, $mN-s$', 						
 			  'isp': '$I_{SP}$, $s$', 		
 			  'mach_exit': 'Mach', 				
 			  'rho_star': 'Density, $kg/m^3$', 	
-			  'reynolds': 'Re x $10^3$' }
+			  'reynolds': 'Re x $10^3$',
+			  't_star': 'Temperature, $K$' }
 
 # legend = 	{ 'thrust': 'Thrust', 							
 # 			  'impulse': 'Net Impulse', 							
@@ -247,7 +255,7 @@ ylabels = 	{ 'thrust': 'Thrust, $mN$',
 # 			  'rho_star': '#ff7f0e', 				
 # 			  'reynolds': '#ff7f0e' }
 
-num_rows = 3
+num_rows = 4
 num_cols = 2
 
 fig, axs = plt.subplots(num_rows, num_cols, figsize=figsize, dpi=dpi)
