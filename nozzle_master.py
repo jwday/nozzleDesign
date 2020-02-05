@@ -19,19 +19,19 @@ from matplotlib.lines import Line2D
 gas_type = 'CO2'				# Gas Choices: R236fa, R134a, N2, CO2, air
 P_t_init = 114.7 * 6894.76  	# Init Total Pressure, units of Pa (psia * 6894.76)
 P_amb = 14.7 * 6894.76  		# Ambient Pressure, units of Pa (psia * 6894.76)
-T_t_init = 0 + 273.15  		# Init Total Temperature, units of K (C + 273.15)
+T_t_init = 0 + 273.15  			# Init Total Temperature, units of K (C + 273.15)
 vol = 30 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
 time_step = 0.001				# Simulation time step
 d_star = 0.6 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
 half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
-expansion_ratio = 1.3225		# Nozzle expansion ratio (Exit Area / Throat Area)
+expansion_ratio = 1.1850		# Nozzle expansion ratio (Exit Area / Throat Area)
 								# 	Inlet PSI ------- Ideal Expansion Ratio
-								# 	114.7 ----------- 1.8048
-								# 	80 -------------- 1.6173
-								# 	65 -------------- 1.3225
+								# 		114.7 ------- 1.8048
+								# 		80 ---------- 1.6173
+								# 		65 ---------- 1.3225
+								#	Impulse is maximized when Exp Ratio = ~1.1850
 figsize = (8.5, 11)				# Figure size (in)
 dpi = 150						# Figure dpi
-
 
 
 
@@ -126,8 +126,9 @@ while list_of_P_ts[-1] > P_amb:
 	# THIS IS INVALD. You have to...
 	# 1. Determine the NEW enthalpy after some of the mass has left.
 	# list_of_T_ts.append( list_of_T_ts[-1]*(list_of_chamber_densities[-1]/list_of_chamber_densities[-2])**(k-1) )
-	list_of_T_ts.append( list_of_T_ts[-1] )
-	list_of_P_ts.append( list_of_P_ts[-1]*(list_of_chamber_densities[-1]/list_of_chamber_densities[-2])**k )
+	list_of_T_ts.append( list_of_T_ts[-1] )  # Ideal gas model states that, for FREE EXPANSION OF A GAS, temperature is constant
+	# list_of_P_ts.append( list_of_P_ts[-1]*(list_of_chamber_densities[-1]/list_of_chamber_densities[-2])**k )
+	list_of_P_ts.append( list_of_chamber_densities[-1]*R*list_of_T_ts[-1] )
 
 
 # By the nature of this loop, anything that has an init value will end up with one extra element in its list
