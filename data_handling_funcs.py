@@ -1,21 +1,92 @@
-import pandas as pd
-import matplotlib.pyplot as plt
 from scipy import stats
+from scipy import signal
+import math
+import pandas as pd
+import numpy as np
+import sys
+import seaborn as sns
+import os
 
 def all_data(prefix):
-	data_float_psi = pd.read_csv(str(prefix + '_float_data.csv'))
+	data_float_psi = pd.read_csv(str(prefix + '_float_data.csv'), header=1)
 	data_float_psi.insert(2, "Float Pressure (psia)", [x+14.7 for x in data_float_psi["Float Pressure (psig)"]])
+	b, a = signal.butter(5, 0.5)
+	data_float_psi_filtered = signal.filtfilt(b, a, data_float_psi['Float Pressure (psig)'])
+	data_float_psi = pd.concat([data_float_psi, pd.DataFrame(data_float_psi_filtered, columns=['Float Pressure Filtered (psig)'])], axis=1)
+	tmax_float_psi = round(data_float_psi['Time (s)'].iloc[-1], 1)
+	# n_float_psi_resampled = int(tmax_float_psi*10 + 1)
+	n_all_resampled =int(tmax_float_psi*10 + 1)
+	tnew_float_psi = np.linspace(0, tmax_float_psi, n_all_resampled)
+	data_float_psi_resampled = signal.resample(data_float_psi['Float Pressure Filtered (psig)'], n_all_resampled)
+	# data_float_psi_resampled = signal.resample_poly(data_float_psi['Float Pressure (psig)'], 10, 9)
+	tnew_float_psi = np.linspace(0, tmax_float_psi, data_float_psi_resampled.size)
+	data_float_psi = pd.concat([data_float_psi, pd.DataFrame(np.transpose(np.array([tnew_float_psi, data_float_psi_resampled])), columns=['Time Resampled (s)', 'Float Pressure Resampled (psig)'])], axis=1)
 
-	data_prop_psi = pd.read_csv(str(prefix + '_prop_data.csv'))
+
+	data_prop_psi = pd.read_csv(str(prefix + '_prop_data.csv'), header=1)
 	data_prop_psi.insert(2, "Prop Pressure (psia)", [x+14.7 for x in data_prop_psi["Prop Pressure (psig)"]])
+	data_prop_psi_filtered = signal.filtfilt(b, a, data_prop_psi['Prop Pressure (psig)'])
+	data_prop_psi = pd.concat([data_prop_psi, pd.DataFrame(data_prop_psi_filtered, columns=['Prop Pressure Filtered (psig)'])], axis=1)
+	tmax_prop_psi = round(data_prop_psi['Time (s)'].iloc[-1], 1)
+	# n_prop_psi_resampled = int(tmax_prop_psi*10 + 1)
+	tnew_prop_psi = np.linspace(0, tmax_prop_psi, n_all_resampled)
+	data_prop_psi_resampled = signal.resample(data_prop_psi['Prop Pressure Filtered (psig)'], n_all_resampled)
+	# data_prop_psi_resampled = signal.resample_poly(data_prop_psi['Prop Pressure (psig)'], 10, 9)
+	tnew_prop_psi = np.linspace(0, tmax_prop_psi, data_prop_psi_resampled.size)
+	data_prop_psi = pd.concat([data_prop_psi, pd.DataFrame(np.transpose(np.array([tnew_prop_psi, data_prop_psi_resampled])), columns=['Time Resampled (s)', 'Prop Pressure Resampled (psig)'])], axis=1)
 
-	data_weight = pd.read_csv(str(prefix + '_loadcell_data.csv'))
-	data_weight.insert(2, "Thrust (mN)", [x*9.81 for x in data_weight["Weight (?)"]])
 
-	data_temp = pd.read_csv(str(prefix + '_temp_data.csv'))
-	data_temp.insert(2, "Temperature (K)", [x+273.15 for x in data_temp["Exit Temperature (Celsius)"]])
+	data_weight = pd.read_csv(str(prefix + '_loadcell_data.csv'), header=1)
+	data_weight.insert(2, "Thrust (mN)", [x*1 for x in data_weight["Weight (?)"]])
+	b, a = signal.butter(3, 0.85)
+	data_weight_filtered = signal.filtfilt(b, a, data_weight['Thrust (mN)'])
+	data_weight = pd.concat([data_weight, pd.DataFrame(data_weight_filtered, columns=['Thrust Filtered (mN)'])], axis=1)
+	tmax_weight = round(data_weight['Time (s)'].iloc[-1], 1)
+	# n_weight_resampled = int(tmax_weight*10 + 1)
+	tnew_weight = np.linspace(0, tmax_weight, n_all_resampled)
+	data_weight_resampled = signal.resample(data_weight['Thrust Filtered (mN)'], n_all_resampled)
+	# data_weight_resampled = signal.resample_poly(data_weight['Thrust (mN)'], 10, 9)
+	tnew_weight = np.linspace(0, tmax_weight, data_weight_resampled.size)
+	data_weight = pd.concat([data_weight, pd.DataFrame(np.transpose(np.array([tnew_weight, data_weight_resampled])), columns=['Time Resampled (s)', 'Thrust Resampled (mN)'])], axis=1)
 
-	return [data_float_psi, data_prop_psi, data_weight, data_temp]
+	thrust_corrected = []
+	for i, x in enumerate(data_weight['Thrust Resampled (mN)'].dropna()):
+		thrust_corrected.append(x + (100 - data_float_psi['Float Pressure Filtered (psig)'][i])*(37.6/100))
+	data_weight = pd.concat([data_weight, pd.DataFrame(thrust_corrected, columns=['Thrust Corrected (mN)'])], axis=1)
+
+
+	# data_temp = pd.read_csv('/home/josh/remoteProp/data/' + str(prefix + '_temp_data.csv'), header=1)
+	# data_temp.insert(2, "Temperature (K)", [x+273.15 for x in data_temp["Exit Temperature (Celsius)"]])
+	# data_temp_filtered = signal.filtfilt(b, a, data_temp['Temperature (K)'])
+	# data_temp = pd.concat([data_temp, pd.DataFrame(data_temp_filtered, columns=['Temperature Filtered (K)'])], axis=1)
+	# tmax_temp = round(data_temp['Time (s)'].iloc[-1], 1)
+	# # n_temp_resampled = int(tmax_temp*10 + 1)
+	# tnew_temp = np.linspace(0, tmax_temp, n_all_resampled)
+	# data_temp_resampled = signal.resample(data_temp['Temperature Filtered (K)'], n_all_resampled)
+	# # data_temp_resampled = signal.resample_poly(data_temp['Temperature (K)'], 10, 9)
+	# tnew_temp = np.linspace(0, tmax_temp, data_temp_resampled.size)
+	# data_temp = pd.concat([data_temp, pd.DataFrame(np.transpose(np.array([tnew_temp, data_temp_resampled])), columns=['Time Resampled (s)', 'Temperature Resampled (K)'])], axis=1)
+
+
+	# return [data_float_psi, data_prop_psi, data_weight, data_temp]
+
+	return [data_float_psi, data_prop_psi, data_weight]
+
+	
+# def all_data(prefix):
+# 	data_float_psi = pd.read_csv(str(prefix + '_float_data.csv'))
+# 	data_float_psi.insert(2, "Float Pressure (psia)", [x+14.7 for x in data_float_psi["Float Pressure (psig)"]])
+
+# 	data_prop_psi = pd.read_csv(str(prefix + '_prop_data.csv'))
+# 	data_prop_psi.insert(2, "Prop Pressure (psia)", [x+14.7 for x in data_prop_psi["Prop Pressure (psig)"]])
+
+# 	data_weight = pd.read_csv(str(prefix + '_loadcell_data.csv'))
+# 	data_weight.insert(2, "Thrust (mN)", [x*9.81 for x in data_weight["Weight (?)"]])
+
+# 	data_temp = pd.read_csv(str(prefix + '_temp_data.csv'))
+# 	data_temp.insert(2, "Temperature (K)", [x+273.15 for x in data_temp["Exit Temperature (Celsius)"]])
+
+# 	return [data_float_psi, data_prop_psi, data_weight, data_temp]
 
 
 
