@@ -7,19 +7,17 @@ import sys
 import seaborn as sns
 import os
 
-def all_data(prefix):
-	data_float_psi = pd.read_csv(str(prefix + '_float_data.csv'), header=1)
-	data_float_psi.insert(2, "Float Pressure (psia)", [x+14.7 for x in data_float_psi["Float Pressure (psig)"]])
-	b, a = signal.butter(5, 0.5)
-	data_float_psi_filtered = signal.filtfilt(b, a, data_float_psi['Float Pressure (psig)'])
-	data_float_psi = pd.concat([data_float_psi, pd.DataFrame(data_float_psi_filtered, columns=['Float Pressure Filtered (psig)'])], axis=1)
-	tmax_float_psi = round(data_float_psi['Time (s)'].iloc[-1], 1)
-	# n_float_psi_resampled = int(tmax_float_psi*10 + 1)
-	n_all_resampled =int(tmax_float_psi*10 + 1)
-	tnew_float_psi = np.linspace(0, tmax_float_psi, n_all_resampled)
-	data_float_psi_resampled = signal.resample(data_float_psi['Float Pressure Filtered (psig)'], n_all_resampled)
-	# data_float_psi_resampled = signal.resample_poly(data_float_psi['Float Pressure (psig)'], 10, 9)
-	tnew_float_psi = np.linspace(0, tmax_float_psi, data_float_psi_resampled.size)
+def all_data(prefix, mult_by_g=False):
+	data_float_psi = pd.read_csv(str(prefix + '_float_data.csv'), header=1)  # Init the dataframe
+	data_float_psi.insert(2, "Float Pressure (psia)", [x+14.7 for x in data_float_psi["Float Pressure (psig)"]])  # Insert psia column
+	b, a = signal.butter(5, 0.5)  # Create a filter
+	data_float_psi_filtered = signal.filtfilt(b, a, data_float_psi['Float Pressure (psig)'])  # Apply the filter to the psig data
+	data_float_psi = pd.concat([data_float_psi, pd.DataFrame(data_float_psi_filtered, columns=['Float Pressure Filtered (psig)'])], axis=1)  # Insert filtered psig column
+	tmax_float_psi = round(data_float_psi['Time (s)'].iloc[-1], 1)  # Determine a max time for the next step
+	n_all_resampled =int(tmax_float_psi*10 + 1)  # Use the max time to determine number of resampled data points to create
+	tnew_float_psi = np.linspace(0, tmax_float_psi, n_all_resampled)  # Create a new list of equally spaced times based on the number of desired resampled data points
+	data_float_psi_resampled = signal.resample(data_float_psi['Float Pressure Filtered (psig)'], n_all_resampled)  # Resample the filtered psig data
+	tnew_float_psi = np.linspace(0, tmax_float_psi, data_float_psi_resampled.size)  # Shouldn't this be the same? Yeah it should be
 	data_float_psi = pd.concat([data_float_psi, pd.DataFrame(np.transpose(np.array([tnew_float_psi, data_float_psi_resampled])), columns=['Time Resampled (s)', 'Float Pressure Resampled (psig)'])], axis=1)
 
 
@@ -35,9 +33,12 @@ def all_data(prefix):
 	tnew_prop_psi = np.linspace(0, tmax_prop_psi, data_prop_psi_resampled.size)
 	data_prop_psi = pd.concat([data_prop_psi, pd.DataFrame(np.transpose(np.array([tnew_prop_psi, data_prop_psi_resampled])), columns=['Time Resampled (s)', 'Prop Pressure Resampled (psig)'])], axis=1)
 
-
+	if mult_by_g: 
+		g = 9.81
+	else:
+		g = 1
 	data_weight = pd.read_csv(str(prefix + '_loadcell_data.csv'), header=1)
-	data_weight.insert(2, "Thrust (mN)", [x*1 for x in data_weight["Weight (?)"]])
+	data_weight.insert(2, "Thrust (mN)", [x*g for x in data_weight["Weight (?)"]])
 	b, a = signal.butter(3, 0.85)
 	data_weight_filtered = signal.filtfilt(b, a, data_weight['Thrust (mN)'])
 	data_weight = pd.concat([data_weight, pd.DataFrame(data_weight_filtered, columns=['Thrust Filtered (mN)'])], axis=1)
@@ -50,8 +51,9 @@ def all_data(prefix):
 	data_weight = pd.concat([data_weight, pd.DataFrame(np.transpose(np.array([tnew_weight, data_weight_resampled])), columns=['Time Resampled (s)', 'Thrust Resampled (mN)'])], axis=1)
 
 	thrust_corrected = []
+	thrust_correction_factor = data_weight['Thrust Resampled (mN)'].dropna().tail().mean()
 	for i, x in enumerate(data_weight['Thrust Resampled (mN)'].dropna()):
-		thrust_corrected.append(x + (100 - data_float_psi['Float Pressure Filtered (psig)'][i])*(37.6/100))
+		thrust_corrected.append(x - (100 - data_float_psi['Float Pressure Filtered (psig)'][i])*(thrust_correction_factor/100))
 	data_weight = pd.concat([data_weight, pd.DataFrame(thrust_corrected, columns=['Thrust Corrected (mN)'])], axis=1)
 
 
