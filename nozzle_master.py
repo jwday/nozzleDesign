@@ -24,7 +24,7 @@ vol = 30 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
 time_step = 0.001				# Simulation time step
 d_star = 0.6 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
 half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
-expansion_ratio = 1.1850		# Nozzle expansion ratio (Exit Area / Throat Area)
+expansion_ratio = 1.3225		# Nozzle expansion ratio (Exit Area / Throat Area)
 								# 	Inlet PSI ------- Ideal Expansion Ratio
 								# 		114.7 ------- 1.8048
 								# 		80 ---------- 1.6173
@@ -163,42 +163,6 @@ for i in range(0, len(time)):
 	ISP.append( 1000*list_of_thrusts[i]/(9.81*list_of_mdots[i]) )
 
 
-
-## ==================================================================================
-## ---- SAVE TO CSV -----------------------------------------------------------------
-## ==================================================================================
-# list_of_NaNs = [np.NaN for i in range(len(list_of_P_ts)-1)]
-
-# list_of_M_crit_subs = [M_crit_sub]
-# list_of_M_crit_sups = [M_crit_sup]
-# list_of_PR_crit_subs = [1/PR_crit_sub]
-# list_of_PR_crit_sups = [1/PR_crit_sup]
-# list_of_PR_exit_shocks = [1/PR_exit_shock]
-# list_of_M_exit_behindshock = [M_exit_behindshock]
-
-# for list in [list_of_M_crit_subs, list_of_M_crit_sups, list_of_PR_crit_subs, list_of_PR_crit_sups, list_of_PR_exit_shocks, list_of_M_exit_behindshock]:
-#         list.extend(list_of_NaNs)
-
-# out =  {'Time (s)': time,
-# 		'Chamber Pressure (psi)': list_of_P_ts,
-# 		'Chamber Temp (K)': list_of_T_ts,
-# 		'Mass Flow Rate (g/s)': list_of_mdots,
-# 		'Exit Pressure (psi)': list_of_P_exits,
-# 		'Pressure Ratio': list_of_pressure_ratios,
-# 		'Exit Mach Number': list_of_M_exits,
-# 		'Exit Velocity (m/s)': list_of_v_exits,
-# 		'Instantaneous Thrust (N)': list_of_thrusts,
-# 		'': [np.NaN for i in range(len(list_of_P_ts))],
-# 		'Critical Mach, Sub': list_of_M_crit_subs,
-# 		'Critical Mach, Sup': list_of_M_crit_sups,
-# 		'Critical PR, Sub': list_of_PR_crit_subs,
-# 		'Critical PR, Sup': list_of_PR_crit_subs,
-# 		'': [np.NaN for i in range(len(list_of_P_ts))],
-# 		'PR for Shock at Exit': list_of_PR_exit_shocks,
-# 		'Mach Behind Exit Shock': list_of_M_exit_behindshock}
-
-# df = pd.DataFrame.from_dict(out)
-# df.to_csv("nozzle_pressure.csv", index=False)
 
 
 ## ==================================================================================
