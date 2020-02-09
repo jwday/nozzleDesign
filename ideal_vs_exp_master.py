@@ -259,22 +259,24 @@ else:
 fig1, axs = plt.subplots(2, 1, figsize=figsize, dpi=dpi, sharex='col')
 fig1.suptitle('Pressure & Thrust vs. Time ({} Trials)'.format(len(test_nos)), fontsize=fontsize)
 
-td1 = []
+td1 = []  # Pressure
 for trial, test_no in enumerate(test_nos):
 	test_data = all_data('Test Data/' + test_no, mult_by_g)[0]  # All the Float Pressure data
 	test_data['trial'] = trial  # Used to label the data for showing individually
+	test_data['Setpoint'] = '{} psig'.format(int(test_data['Float Pressure (psig)'][0].round(-1)))  # Used to label the data for showing individually
 	td1.append(test_data)
 td1 = pd.concat(td1)
 td1['Time (s)'] = td1['Time (s)'].round(1)
 sns.lineplot(ax=axs[0],
 			 x='Time (s)',
-			 y='Float Pressure (psia)',
+			 y='Float Pressure (psig)',
 			 data=td1,
-			 hue='trial',  estimator=None, # Show each trial individually instead of an aggregate
+			 hue='Setpoint', style='Setpoint', estimator=np.mean,  # Show each trial individually instead of an aggregate
 			 marker=data_marker)
-axs[0].set_ylabel('Pressure, psia', color='#413839', fontsize=fontsize)
+axs[0].set_ylabel('Pressure, $psig$', color='#413839', fontsize=fontsize)
 axs[0].tick_params(colors='#413839')
 axs[0].grid(which='major', axis='both', linestyle='--')
+axs[0].set_ylim(bottom=0)
 
 if not steady_state:
 	axs[0].plot([x+0.57 for x in time], [x / 6894.76 for x in list_of_P_ts], color='#ff7f0e', label='pres_inlet', linestyle='-', linewidth=linewidth)
@@ -284,21 +286,22 @@ box0 = axs[0].get_position()
 # axs[0].set_position([box0.x0 + box0.width * 0.05, box0.y0 + box0.height * 0.05, box0.width, box0.height])
 
 
-td2 = []
+td2 = []  # Thrust
 for trial, test_no in enumerate(test_nos):
 	test_data = all_data('Test Data/' + test_no, mult_by_g)[2]  # All the Thrust data
 	test_data['trial'] = trial  # Used to label the data for showing individually
+	test_data['Setpoint'] = '{} psig'.format(int(all_data('Test Data/' + test_no, mult_by_g)[0]['Float Pressure (psig)'][0].round(-1)))  # Used to label the data for showing individually
 	td2.append(test_data)
 td2 = pd.concat(td2)
 td2['Time (s)'] = td2['Time (s)'].round(1)
 sns.lineplot(ax=axs[1],
 			 x='Time (s)',
-			 y='Thrust Corrected (mN)',
+			 y='Thrust (mN)',
 			 data=td2,
-			 hue='trial', estimator=None,  # Show each trial individually instead of an aggregate
+			 hue='Setpoint', style='Setpoint', estimator=np.mean,  # Show each trial individually instead of an aggregate
 			 marker=data_marker)
 axs[1].set_xlabel('Time, s', color='#413839', fontsize=fontsize)
-axs[1].set_ylabel('Thrust, mN', color='#413839', fontsize=fontsize)
+axs[1].set_ylabel('Thrust, $mN$', color='#413839', fontsize=fontsize)
 axs[1].tick_params(colors='#413839')
 axs[1].grid(which='major', axis='both', linestyle='--')
 

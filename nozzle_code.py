@@ -23,6 +23,10 @@ def nozzle(P_t, T_t, P_amb, d_throat, expansion_ratio, half_angle, gas_type):
 	if gas_type == 'CO2':
 		k = 1.289
 		R = 8.314/0.04401  # Specific gas constant (J/kg-K)
+
+	if gas_type == 'H2':
+		k = 1.410
+		R = 8.314/0.002016  # Specific gas constant (J/kg-K)
 	
 	if gas_type == 'air':
 		k = 1.401
@@ -31,7 +35,6 @@ def nozzle(P_t, T_t, P_amb, d_throat, expansion_ratio, half_angle, gas_type):
 
 	## --------------------------------------------------------------------------------
 	rho_t = P_t/(R*T_t)  # Total density (kg/m^3)
-	c_0 = np.sqrt(k*R*T_t)
 
 	# Critical (Sonic) Conditions (Isentropic)
 	A_throat = np.pi*(d_throat**2)/4  # Throat area
@@ -39,7 +42,11 @@ def nozzle(P_t, T_t, P_amb, d_throat, expansion_ratio, half_angle, gas_type):
 	P_throat = P_t*(2/(k+1))**(k/(k-1)) # Pa
 	rho_throat = rho_t*(2/(k+1))**(1/(k-1)) # kg/m^3
 	c_throat = np.sqrt(k*R*T_throat) # m/s
-	mu_throat = (0.0492*T_throat + 0.3276)*(10**-6) # Pa-s, Emperical formula derived from NIST data. Viscosity is highly invariable with pressure between 0.1 and 0.8 MPa, and only somewhat variable with temperature, and linearly at that. Use 13 uPa-s in a pinch.
+
+	m_dot = rho_throat * A_throat * c_throat
+
+	mu_throat = (0.0492*T_throat + 0.3276)*(10**-6) # Pa-s, Emperical formula derived from NIST data. Viscosity is highly invariable with pressure between 0.1 and 0.8 MPa, and only slightly variable with temperature, and linearly at that. Use 13 uPa-s in a pinch.
+	# mu_throat = (0.0217*T_throat + 2.4376)*(10**-6)  # Viscosity of H2, Pa-s. Use 7.772 in a pinch.
 	Re_throat = rho_throat*c_throat*d_throat/mu_throat
 
 	# Exit Conditions
@@ -82,15 +89,13 @@ def nozzle(P_t, T_t, P_amb, d_throat, expansion_ratio, half_angle, gas_type):
 	M_exit_behindshock = np.sqrt( (1 + L*M_crit_sup**2)/(k*M_crit_sup**2 - L) )  # Should be < 1
 	PR_exit_shock = np.sqrt( S*(P**Q)*M_exit_behindshock*(1 + L*M_exit_behindshock**2) )  # (P_t/P_amb)_exit_shock  
 
+
 	## --------------------------------------------------------------------------------
 	# Entirely subsonic. SONIC CONDITIONS DO NOT APPLY AND THEREFORE THROAT STATE MUST BE RECALCULATED.
 	if P_t/P_amb > 1 and P_t/P_amb <= PR_crit_sub:
 		M_exit = np.sqrt( (1/L)*((P_t/P_amb)**(1/W) - 1) )  # Should be < 1
 		# Exit pressure = Ambient pressure. Any and all thrust is purely from momentum exchange.
 		P_exit = P_amb
-
-
-
 
 	# Shock somewhere in the flow (Overexpansion)
 	elif P_t/P_amb > PR_crit_sub and P_t/P_amb < PR_crit_sup:
@@ -171,32 +176,9 @@ def nozzle(P_t, T_t, P_amb, d_throat, expansion_ratio, half_angle, gas_type):
 		T_throat = T_t*Z_func(M_throat)**(-1)
 		c_throat = math.sqrt(k*R*T_throat)
 		v_throat = M_throat*c_throat
-		mu_throat = (0.0492*T_throat + 0.3276)*(10**-6) # Pa-s
+		mu_throat = (0.0492*T_throat + 0.3276)*(10**-6)  # Viscosity of CO2, Pa-s
+		# mu_throat = (0.0217*T_throat + 2.4376)*(10**-6)  # Viscosity of H2, Pa-s
 		Re_throat = rho_throat*v_throat*d_throat/mu_throat
-
-	# Q_scfm = (m_dot/1.98)*35.3147*60  # Volumetric flow rate (m^3/s)
-	# CO2 is 1.98 kg/m^3 at STP
-	# 35.3147 ft^3 / m^3
-
-	# Determine sub and supersonic exit conditions
-	# T_exit = []
-	# P_exit = []
-	# v_exit = []
-	# c_exit = []
-
-	# for i in [M_crit_sub, M_crit_sup]:
-	#     Z = 1 + L*(i**2)
-	#     T_exit.append(T_t/Z)  # Exit temperature (K)
-	#     v_exit.append( i*np.sqrt(k*R*(T_t/Z)) )  # Exit velocity (m/s)
-	#     c_exit.append(np.sqrt(k*R*(T_t/Z)))  # Exit speed of sound (m/s)
-	#     P_exit.append(P_t*Z**(-W))
-
-		# if P_exit[i] > P_amb:
-		#     P_exit.append(P_t*Z**(-W))  # Exit pressure (Pa)
-		# else:
-		#     P_exit.append(P_amb)
-		#     P_total_shock = P_amb*( (1 + L*M_crit_sub**2)**(k/(k-1)) )
-
 
 
 	# Determine thrust

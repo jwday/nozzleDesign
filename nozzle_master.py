@@ -11,12 +11,11 @@ import seaborn as sns
 from data_handling_funcs import *
 from matplotlib.lines import Line2D
 
-
 ## ==================================================================================
 ## ---- USER OPTIONS ----------------------------------------------------------------
 ## ==================================================================================
 
-gas_type = 'CO2'				# Gas Choices: R236fa, R134a, N2, CO2, air
+gas_type = 'CO2'				# Gas Choices: R236fa, R134a, N2, CO2, H2, air
 P_t_init = 114.7 * 6894.76  	# Init Total Pressure, units of Pa (psia * 6894.76)
 P_amb = 14.7 * 6894.76  		# Ambient Pressure, units of Pa (psia * 6894.76)
 T_t_init = 0 + 273.15  			# Init Total Temperature, units of K (C + 273.15)
@@ -35,8 +34,9 @@ dpi = 150						# Figure dpi
 
 
 
+
 ## ==================================================================================
-## ---- PRE-CALCULATIONS ------------------------------------------------------------
+## ---- SETUP PROPELLANT ------------------------------------------------------------
 ## ==================================================================================
 
 if gas_type == 'R236fa':
@@ -55,6 +55,10 @@ if gas_type == 'CO2':
 	k = 1.289
 	R = 8.314/0.04401  # Specific gas constant (J/kg-K)
 
+if gas_type == 'H2':
+	k = 1.410
+	R = 8.314/0.002016  # Specific gas constant (J/kg-K)
+
 if gas_type == 'air':
 	k = 1.401
 	R = 8.314/0.0289645  # Specific gas constant (J/kg-K)
@@ -64,8 +68,10 @@ m_init = density_init*vol  # Units of kg
 dia = 2*(vol*(3/4)/math.pi)**(1/3)  # Plenum diatmer , units of m
 
 
+
+
 ## ==================================================================================
-## ---- SET UP DATA LISTS -----------------------------------------------------------
+## ---- INIT DATA LISTS -------------------------------------------------------------
 ## ==================================================================================
 
 # list_of_P_ts = list(np.linspace (P_t_max, P_amb, no_of_points))
@@ -174,7 +180,8 @@ for i in range(0, len(time)):
 linewidth = 2
 fontsize = 12
 
-data = 		{ 'thrust': [x*1000 for x in list_of_thrusts], 
+data = 		{ 'pressure': [x/1000 for x in list_of_P_ts],
+			  'thrust': [x*1000 for x in list_of_thrusts], 
 			  'impulse': [x*1000 for x in cumulative_impulse], 	
 			  'isp': ISP, 			
 			  'mach_exit': list_of_M_exits, 		
@@ -182,7 +189,8 @@ data = 		{ 'thrust': [x*1000 for x in list_of_thrusts],
 			  'reynolds': [x/1000 for x in list_of_Re_stars],
 			  't_star': list_of_T_stars }
 
-figname = 	{ 'thrust': 'Thrust', 							
+figname = 	{ 'pressure': 'Pressure',
+			  'thrust': 'Thrust', 							
 			  'impulse': 'Net Impulse', 							
 			  'isp': '$I_{SP}$', 			
 			  'mach_exit': 'Exit Mach Number', 	
@@ -190,7 +198,8 @@ figname = 	{ 'thrust': 'Thrust',
 			  'reynolds': 'Throat Reynold\'s Number',
 			  't_star': 'Throat Temperature' }
 
-times = 	{ 'thrust': time, 								
+times = 	{ 'pressure': time,
+			  'thrust': time, 								
 			  'impulse': time_offset, 							
 			  'isp': time, 			
 			  'mach_exit': time, 					
@@ -198,7 +207,8 @@ times = 	{ 'thrust': time,
 			  'reynolds': time,
 			  't_star': time }
 
-ylabels = 	{ 'thrust': 'Thrust, $mN$', 						
+ylabels = 	{ 'pressure': 'Pressure, $kPa$',
+			  'thrust': 'Thrust, $mN$', 						
 			  'impulse': 'Impulse, $mN-s$', 						
 			  'isp': '$I_{SP}$, $s$', 		
 			  'mach_exit': 'Mach', 				
@@ -229,19 +239,19 @@ for i, j in enumerate(data.items()):
 	col = i % num_cols
 
 	# --- For Pressure on Secondary Axis ----
-	axs[row, col].plot(times[j[0]], data[j[0]], color='#ff7f0e', label=ylabels[j[0]], linestyle='-.', linewidth=linewidth)
+	axs[row, col].plot(times[j[0]], data[j[0]], color='#1f77b4', label=ylabels[j[0]], linestyle='-', linewidth=linewidth)
 	axs[row, col].set_title(figname[j[0]])
 	axs[row, col].set_xlabel('Time, $s$', color='#413839', fontsize=fontsize)
 	axs[row, col].set_ylabel(ylabels[j[0]], color='#413839', fontsize=fontsize)
 	axs[row, col].tick_params(colors='#413839')
 	axs[row, col].set_ylim(bottom=0)
 	
-	second_ax = axs[row, col].twinx()
-	line1, = second_ax.plot(time, [x/1000 for x in list_of_P_ts], color='#1f77b4', label='pres_inlet', linestyle='-', linewidth=linewidth)
-	line2, = second_ax.plot(time, [x/1000 for x in list_of_P_stars], color='#1f77b4', label='pres_throat', linestyle=':', linewidth=linewidth)
-	line3, = second_ax.plot(time, [x/1000 for x in list_of_P_exits], color='#1f77b4', label='pres_exit', linestyle='--', linewidth=linewidth)
-	second_ax.set_ylabel('Pressure, kPa', color='#413839', fontsize=fontsize)
-	second_ax.tick_params(colors='#413839')
+	# second_ax = axs[row, col].twinx()
+	# line1, = second_ax.plot(time, [x/1000 for x in list_of_P_ts], color='#1f77b4', label='pres_inlet', linestyle='-', linewidth=linewidth)
+	# line2, = second_ax.plot(time, [x/1000 for x in list_of_P_stars], color='#1f77b4', label='pres_throat', linestyle=':', linewidth=linewidth)
+	# line3, = second_ax.plot(time, [x/1000 for x in list_of_P_exits], color='#1f77b4', label='pres_exit', linestyle='--', linewidth=linewidth)
+	# second_ax.set_ylabel('Pressure, kPa', color='#413839', fontsize=fontsize)
+	# second_ax.tick_params(colors='#413839')
 
 
 	# --- For Pressure on Primary Axis ----
@@ -267,7 +277,7 @@ for i, j in enumerate(data.items()):
 	
 
 fig.suptitle(r'Inlet, Throat, and Exit Pressure vs. Nozzle Metrics ($\varnothing${0} mm, $\lambda$={1})'.format(d_star*1000, expansion_ratio))
-fig.legend((line1, line2, line3), ('Inlet Pressure', 'Throat Pressure', 'Exit Pressure'), loc='center', bbox_to_anchor=(0.5, 0.05), ncol=3, frameon=True, fontsize=fontsize, edgecolor='255', borderpad=1)
+# fig.legend((line1, line2, line3), ('Inlet Pressure', 'Throat Pressure', 'Exit Pressure'), loc='center', bbox_to_anchor=(0.5, 0.05), ncol=3, frameon=True, fontsize=fontsize, edgecolor='255', borderpad=1)
 plt.tight_layout()
 plt.subplots_adjust(bottom=0.15)
 plt.subplots_adjust(top=0.925)
