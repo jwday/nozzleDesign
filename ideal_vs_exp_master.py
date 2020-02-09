@@ -19,10 +19,12 @@ from data_handling_funcs import *
 gas_type = 'CO2'				# Gas Choices: R236fa, R134a, N2, CO2, air
 P_t_init = 114.7 * 6894.76  	# Init Total Pressure, units of Pa (psia * 6894.76)
 P_amb = 14.7 * 6894.76  		# Ambient Pressure, units of Pa (psia * 6894.76)
-T_t_init = -30 + 273.15  			# Init Total Temperature, units of K (C + 273.15)
+T_t_init = 0 + 273.15  			# Init Total Temperature, units of K (C + 273.15)
+list_of_Tts = [273.15]
+
 vol = 30 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
 time_step = 0.001				# Simulation time step
-d_star = 0.4 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
+d_star = 0.6 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
 half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
 expansion_ratio = 1.3225		# Nozzle expansion ratio (Exit Area / Throat Area)
 								# 	Inlet PSI ------- Ideal Expansion Ratio
@@ -63,31 +65,35 @@ m_init = density_init*vol  # Units of kg
 dia = 2*(vol*(3/4)/math.pi)**(1/3)  # Plenum diatmer , units of m
 
 
-## ==================================================================================
-## ---- SET UP DATA LISTS -----------------------------------------------------------
-## ==================================================================================
+data_dict = {}
 
-# list_of_P_ts = list(np.linspace (P_t_max, P_amb, no_of_points))
-list_of_P_ts = [P_t_init]
-list_of_T_ts = [T_t_init]
-list_of_chamber_densities = [density_init]
-list_of_mdots = []
+for T in list_of_Tts:
 
-list_of_P_exits = []
-list_of_v_exits = []
-list_of_M_exits = []
-list_of_thrusts = []
-list_of_pressure_ratios = []
-# list_of_exit_shock_PRs = []
-list_of_P_stars = []
-list_of_T_stars = []
-list_of_rho_stars = []
-list_of_T_exits = []
-list_of_rho_exits = []
-list_of_Re_stars = []
+	## ==================================================================================
+	## ---- SET UP DATA LISTS -----------------------------------------------------------
+	## ==================================================================================
 
-time = [0]
-m_gas = [m_init]
+	# list_of_P_ts = list(np.linspace (P_t_max, P_amb, no_of_points))
+	list_of_P_ts = [P_t_init]
+	list_of_T_ts = [T_t_init]
+	list_of_chamber_densities = [density_init]
+	list_of_mdots = []
+
+	list_of_P_exits = []
+	list_of_v_exits = []
+	list_of_M_exits = []
+	list_of_thrusts = []
+	list_of_pressure_ratios = []
+	# list_of_exit_shock_PRs = []
+	list_of_P_stars = []
+	list_of_T_stars = []
+	list_of_rho_stars = []
+	list_of_T_exits = []
+	list_of_rho_exits = []
+	list_of_Re_stars = []
+
+	time = [0]
+	m_gas = [m_init]
 
 
 
@@ -102,44 +108,49 @@ m_gas = [m_init]
 # 5. Repeat 1-4 until P < 35
 
 # for P_t in list_of_P_ts:
-while list_of_P_ts[-1] > P_amb:
-	m_dot, M_crit_sub, M_crit_sup, PR_crit_sub, PR_crit_sup, PR_exit_shock, M_exit_behindshock, M_exit, P_exit, v_exit, F, P_star, T_star, rho_star, Re_star, T_exit, rho_exit = nozzle(list_of_P_ts[-1], list_of_T_ts[-1], P_amb, d_star, expansion_ratio, half_angle, gas_type)
 
-	list_of_mdots.append(m_dot*1000)  # Units of g/s
-	list_of_P_exits.append(P_exit)
-	list_of_v_exits.append(v_exit)
-	list_of_M_exits.append(M_exit)
-	list_of_thrusts.append(F)
-	list_of_pressure_ratios.append(P_exit/list_of_P_ts[-1])
-	list_of_P_stars.append(P_star)
-	list_of_T_stars.append(T_star)
-	list_of_rho_stars.append(rho_star)
-	list_of_Re_stars.append(Re_star)
-	list_of_T_exits.append(T_exit)
-	list_of_rho_exits.append(rho_exit)
+	while list_of_P_ts[-1] > P_amb:
+		m_dot, M_crit_sub, M_crit_sup, PR_crit_sub, PR_crit_sup, PR_exit_shock, M_exit_behindshock, M_exit, P_exit, v_exit, F, P_star, T_star, rho_star, Re_star, T_exit, rho_exit = nozzle(list_of_P_ts[-1], list_of_T_ts[-1], P_amb, d_star, expansion_ratio, half_angle, gas_type)
 
-	time.append(time[-1] + time_step)
-	m_gas.append(m_gas[-1] - m_dot*time_step)
-	list_of_chamber_densities.append(m_gas[-1]/vol)
+		list_of_mdots.append(m_dot*1000)  # Units of g/s
+		list_of_P_exits.append(P_exit)
+		list_of_v_exits.append(v_exit)
+		list_of_M_exits.append(M_exit)
+		list_of_thrusts.append(F)
+		list_of_pressure_ratios.append(P_exit/list_of_P_ts[-1])
+		list_of_P_stars.append(P_star)
+		list_of_T_stars.append(T_star)
+		list_of_rho_stars.append(rho_star)
+		list_of_Re_stars.append(Re_star)
+		list_of_T_exits.append(T_exit)
+		list_of_rho_exits.append(rho_exit)
 
-	# THIS IS INVALD. You have to...
-	# 1. Determine the NEW enthalpy after some of the mass has left.
-	# list_of_T_ts.append( list_of_T_ts[-1]*(list_of_chamber_densities[-1]/list_of_chamber_densities[-2])**(k-1) )
-	list_of_T_ts.append( list_of_T_ts[-1] )  # Ideal gas model states that, for FREE EXPANSION OF A GAS, temperature is constant
-	# list_of_P_ts.append( list_of_P_ts[-1]*(list_of_chamber_densities[-1]/list_of_chamber_densities[-2])**k )
-	list_of_P_ts.append( list_of_chamber_densities[-1]*R*list_of_T_ts[-1] )
+		time.append(time[-1] + time_step)
+		m_gas.append(m_gas[-1] - m_dot*time_step)
+		list_of_chamber_densities.append(m_gas[-1]/vol)
 
-
- # By the nature of this loop, anything that has an init value will end up with one extra element in its list
- # So we must manually remove the last element once all is said and done in order to make all the array lengths the same
- # This is due to the fact that the last element will be calculated for Pt < P_amb, which is not realistic.
-del list_of_P_ts[-1], list_of_T_ts[-1], list_of_chamber_densities[-1], time[-1], m_gas[-1]
+		# THIS IS INVALD. You have to...
+		# 1. Determine the NEW enthalpy after some of the mass has left.
+		# list_of_T_ts.append( list_of_T_ts[-1]*(list_of_chamber_densities[-1]/list_of_chamber_densities[-2])**(k-1) )
+		list_of_T_ts.append( list_of_T_ts[-1] )  # Ideal gas model states that, for FREE EXPANSION OF A GAS, temperature is constant
+		# list_of_P_ts.append( list_of_P_ts[-1]*(list_of_chamber_densities[-1]/list_of_chamber_densities[-2])**k )
+		list_of_P_ts.append( list_of_chamber_densities[-1]*R*list_of_T_ts[-1] )
 
 
+	# By the nature of this loop, anything that has an init value will end up with one extra element in its list
+	# So we must manually remove the last element once all is said and done in order to make all the array lengths the same
+	# This is due to the fact that the last element will be calculated for Pt < P_amb, which is not realistic.
+	del list_of_P_ts[-1], list_of_T_ts[-1], list_of_chamber_densities[-1], time[-1], m_gas[-1]
 
-## ==================================================================================
-## ---- POST-CALCULATIONS -----------------------------------------------------------
-## ==================================================================================
+	single_iter = pd.DataFrame(data={'mdot': list_of_mdots, 'thrust': list_of_thrusts})
+	label = str(T)
+	data_dict[label] = single_iter
+
+
+
+# ## ==================================================================================
+# ## ---- POST-CALCULATIONS -----------------------------------------------------------
+# ## ==================================================================================
 
 cumulative_impulse = []
 cumulative_mass = []
@@ -164,20 +175,20 @@ for i in range(0, len(time)):
 
 
 
-## ==================================================================================
-## ---- PLOT ------------------------------------------------------------------------
-## ==================================================================================
+# ## ==================================================================================
+# ## ---- PRESSURE & THRUST VS TIME ---------------------------------------------------
+# ## ==================================================================================
 
-## ---- Steady-state thrust tests on load cell --------------------------------------
+# ## ---- Steady-state thrust tests on load cell --------------------------------------
 
-# test_nos = ['20191205_191138', # 114.7 psia, 0.6 mm nozzle, raw data in g (multiply by 9.81)
-# 			'20191205_191210', 
-# 			'20191205_191332', 
-# 			'20191205_191402', 
-# 			'20191205_191433'
-# 			]  
-# steady_state = True
-# mult_by_g = True
+# # test_nos = ['20191205_191138', # 114.7 psia, 0.6 mm nozzle, raw data in g (multiply by 9.81)
+# # 			'20191205_191210', 
+# # 			'20191205_191332', 
+# # 			'20191205_191402', 
+# # 			'20191205_191433'
+# # 			]  
+# # steady_state = True
+# # mult_by_g = True
 
 test_nos = [ 
 			'20191204_143449',  # 3x trials @ 5x pressures, 0.6 mm nozzle, raw data in g (multiply by 9.81)
@@ -203,51 +214,51 @@ test_nos = [
 steady_state = True
 mult_by_g = True
 
-# test_nos = [ 
-# 			'20191205_191138',  # 5x trials @ 114.7 psia, 0.6 mm nozzle, raw data in g (multiply by 9.81)
-# 			'20191205_191210',
-# 			'20191205_191332',
-# 			'20191205_191402',
-# 			'20191205_191433'
-# 			]  
-# steady_state = True
-# mult_by_g = True
+# # test_nos = [ 
+# # 			'20191205_191138',  # 5x trials @ 114.7 psia, 0.6 mm nozzle, raw data in g (multiply by 9.81)
+# # 			'20191205_191210',
+# # 			'20191205_191332',
+# # 			'20191205_191402',
+# # 			'20191205_191433'
+# # 			]  
+# # steady_state = True
+# # mult_by_g = True
 
-# test_nos = [ 
-# 			'20191219_205802',  # Trash
-# 			'20191219_205915',  # Trash
-# 			'20191219_205943',  # Trash
-# 			]  
-# steady_state = False
-# mult_by_g = True
-
-
+# # test_nos = [ 
+# # 			'20191219_205802',  # Trash
+# # 			'20191219_205915',  # Trash
+# # 			'20191219_205943',  # Trash
+# # 			]  
+# # steady_state = False
+# # mult_by_g = True
 
 
-## ---- Single plenum discharge tests -----------------------------------------------
-
-# test_nos = [
-# 			'20191130_131419', # 114.7 psia, 0.6 mm nozzle, raw data in g (multiply by 9.81)
-# 			'20191130_131515',
-# 			'20191130_131607',
-# 			'20191130_131624',
-# 			'20191130_131644'
-# 			]  
-# steady_state = False
-# mult_by_g = True
 
 
-# test_nos = [
-# 			'20191223_183658', # 114.7 psia, 0.4 mm nozzle, raw data in mN (do not multiply by 9.81)
-# 			'20191223_183725',
-# 			'20191223_183832',
-# 			'20191223_183908',
-# 			'20191223_183945'
-# 			]  
-# steady_state = False
-# mult_by_g = False
+# ## ---- Single plenum discharge tests -----------------------------------------------
 
-## ----------------------------------------------------------------------------------
+# # test_nos = [
+# # 			'20191130_131419', # 114.7 psia, 0.6 mm nozzle, raw data in g (multiply by 9.81)
+# # 			'20191130_131515',
+# # 			'20191130_131607',
+# # 			'20191130_131624',
+# # 			'20191130_131644'
+# # 			]  
+# # steady_state = False
+# # mult_by_g = True
+
+
+# # test_nos = [
+# # 			'20191223_183658', # 114.7 psia, 0.4 mm nozzle, raw data in mN (do not multiply by 9.81)
+# # 			'20191223_183725',
+# # 			'20191223_183832',
+# # 			'20191223_183908',
+# # 			'20191223_183945'
+# # 			]  
+# # steady_state = False
+# # mult_by_g = False
+
+# ## ----------------------------------------------------------------------------------
 
 linewidth = 2
 fontsize = 12
@@ -257,10 +268,10 @@ else:
 	data_marker = 'o'
 
 fig1, axs = plt.subplots(2, 1, figsize=figsize, dpi=dpi, sharex='col')
-fig1.suptitle('Pressure & Thrust vs. Time ({} Trials)'.format(len(test_nos)), fontsize=fontsize)
+fig1.suptitle('Steady-State Pressure & Thrust Measurements ({0} Trials)\n($\\varnothing${1} mm, $\\lambda$={2})'.format(len(test_nos), d_star*1000, expansion_ratio), fontsize=fontsize)
 
 td1 = []  # Pressure
-for trial, test_no in enumerate(test_nos):
+for trial, test_no in reversed(list(enumerate(test_nos))):
 	test_data = all_data('Test Data/' + test_no, mult_by_g)[0]  # All the Float Pressure data
 	test_data['trial'] = trial  # Used to label the data for showing individually
 	test_data['Setpoint'] = '{} psig'.format(int(test_data['Float Pressure (psig)'][0].round(-1)))  # Used to label the data for showing individually
@@ -287,7 +298,7 @@ box0 = axs[0].get_position()
 
 
 td2 = []  # Thrust
-for trial, test_no in enumerate(test_nos):
+for trial, test_no in reversed(list(enumerate(test_nos))):
 	test_data = all_data('Test Data/' + test_no, mult_by_g)[2]  # All the Thrust data
 	test_data['trial'] = trial  # Used to label the data for showing individually
 	test_data['Setpoint'] = '{} psig'.format(int(all_data('Test Data/' + test_no, mult_by_g)[0]['Float Pressure (psig)'][0].round(-1)))  # Used to label the data for showing individually
@@ -313,6 +324,94 @@ box1 = axs[1].get_position()
 # axs[1].set_position([box1.x0 + box1.width * 0.05, box1.y0 + box1.height * 0.05, box1.width, box1.height])
 
 fig1.align_ylabels()
+
+
+
+
+# ## ==================================================================================
+# ## ---- THRUST VS PRESSURE ----------------------------------------------------------
+# ## ==================================================================================
+# test_nos = [ 
+# 			'20191204_143449',  # 3x trials @ 5x pressures, 0.6 mm nozzle, raw data in g (multiply by 9.81)
+# 			'20191204_143538',
+# 			'20191204_143636',
+
+# 			'20191204_143735',
+# 			'20191204_143817',
+# 			'20191204_143931',
+
+# 			'20191204_144142',
+# 			'20191204_144207',
+# 			'20191204_144256',
+
+# 			'20191204_144715',
+# 			'20191204_144754',
+# 			'20191204_144840',
+
+# 			'20191204_145400',
+# 			'20191204_145419',
+# 			'20191204_145442'
+# 			]  
+# steady_state = True
+# mult_by_g = True
+
+# linewidth = 2
+# fontsize = 12
+# if steady_state:
+# 	data_marker = 'None'
+# else:
+# 	data_marker = 'o'
+
+# td1 = []  # Pressure
+# for trial, test_no in reversed(list(enumerate(test_nos))):
+# 	test_data = all_data('Test Data/' + test_no, mult_by_g)[0]  # All the Float Pressure data
+# 	test_data['trial'] = trial  # Used to label the data for showing individually
+# 	test_data['Setpoint'] = '{} psig'.format(int(test_data['Float Pressure (psig)'][0].round(-1)))  # Used to label the data for showing individually
+# 	td1.append(test_data)
+# td1 = pd.concat(td1)
+# pressure_data = td1['Float Pressure Resampled (psig)'][12] + 14.7  # psia, at 1.2 seconds
+
+# td2 = []  # Thrust
+# for trial, test_no in reversed(list(enumerate(test_nos))):
+# 	test_data = all_data('Test Data/' + test_no, mult_by_g)[2]  # All the Thrust data
+# 	test_data['trial'] = trial  # Used to label the data for showing individually
+# 	test_data['Setpoint'] = '{} psig'.format(int(all_data('Test Data/' + test_no, mult_by_g)[0]['Float Pressure (psig)'][0].round(-1)))  # Used to label the data for showing individually
+# 	td2.append(test_data)
+# td2 = pd.concat(td2)
+# thrust_data = td2['Thrust Resampled (mN)'][12]  # mN, at 1.2 seconds
+
+
+# fig8, ax1 = plt.subplots(figsize=figsize, dpi=dpi)
+# 	# Blue: #1f77b4 (Inviscid)
+# 	# Green: #2ca02c
+# 	# Orange: #ff7f0e
+# 	# Gray: #808080
+# ax1.set_xlabel('Pressure (psig)', color='#413839')
+# ax1.set_ylabel('Thrust (mN)', color='#413839')
+# colors = ['#1f77b4', '#ff7f0e']
+# linestyles = ['-', ':']
+
+# for i, T in enumerate(list_of_Tts):
+# 	label = 'Inviscid (' + str(T-273) + ' C)'
+# 	pres = [(x/6894.76)-14.7 for x in list_of_P_ts]
+# 	thrust = list(data_dict[str(T)]['thrust']*1000)
+# 	ax1.plot(pres, thrust, color=colors[i], label=label, linestyle=linestyles[i])
+
+# ax1.plot([x-14.7 for x in pressure_data], thrust_data, color='#2ca02c', linestyle='none', label='Experimental', marker='x')
+
+# ax1.tick_params(colors='#413839')
+# ax1.grid(which='major', axis='both', linestyle='--')
+# ax1.set_xlim(left=0)
+# ax1.set_ylim(bottom=0)
+
+# box = ax1.get_position()
+# ax1.set_position([box.x0, box.y0 + box.height*0.1, box.width, box.height*0.9])
+# fig8.legend(loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False )
+
+# # fig8.legend(['Inviscid', 'Experimental'], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False )
+# plt.title('Ideal & Measured Thrust vs. Pressure\n($\\varnothing${0} mm, $\\lambda$={1})'.format(d_star*1000, expansion_ratio), y=1.0, color='#413839')
+
+
 
 # ---- Plot Everything
 plt.show()
