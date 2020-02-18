@@ -23,8 +23,9 @@ T_t_init = 0 + 273.15  			# Init Total Temperature, units of K (C + 273.15)
 list_of_Tts = [223, 293]
 
 vol = 30 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
-time_step = 0.001				# Simulation time step
-d_star = 0.4 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
+time_step = 0.01				# Simulation time step
+list_of_time_steps = [0.5, 0.25, 0.1, 0.01, 0.001]
+d_star = 0.6 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
 half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
 expansion_ratio = 1.3225		# Nozzle expansion ratio (Exit Area / Throat Area)
 								# 	Inlet PSI ------- Ideal Expansion Ratio
@@ -65,9 +66,9 @@ m_init = density_init*vol  # Units of kg
 dia = 2*(vol*(3/4)/math.pi)**(1/3)  # Plenum diatmer , units of m
 
 
-data_dict = {}
+data_dict = pd.DataFrame()
 
-for T in list_of_Tts:
+for time_step in list_of_time_steps:
 
 	## ==================================================================================
 	## ---- SET UP DATA LISTS -----------------------------------------------------------
@@ -97,17 +98,17 @@ for T in list_of_Tts:
 
 
 
-## ==================================================================================
-## ---- EXECUTE LOOP ----------------------------------------------------------------
-## ==================================================================================
-# 0. Start with init P, T, m_gas
-# 1. Run nozzle given P, T
-# 2. Return m_dot, use to update m_gas assuming a specific time step
-# 3. Use m_gas to determine new density
-# 4. Use new density to update P, T assuming polytropic process + isentropic + ideal gas # NO NO NO. 'isentropic' assumes NO EXCHANGE OF MATTER. THIS IS INVALID.
-# 5. Repeat 1-4 until P < 35
+	## ==================================================================================
+	## ---- EXECUTE LOOP ----------------------------------------------------------------
+	## ==================================================================================
+	# 0. Start with init P, T, m_gas
+	# 1. Run nozzle given P, T
+	# 2. Return m_dot, use to update m_gas assuming a specific time step
+	# 3. Use m_gas to determine new density
+	# 4. Use new density to update P, T assuming polytropic process + isentropic + ideal gas # NO NO NO. 'isentropic' assumes NO EXCHANGE OF MATTER. THIS IS INVALID.
+	# 5. Repeat 1-4 until P < 35
 
-# for P_t in list_of_P_ts:
+	# for P_t in list_of_P_ts:
 
 	while list_of_P_ts[-1] > P_amb:
 		m_dot, M_crit_sub, M_crit_sup, PR_crit_sub, PR_crit_sup, PR_exit_shock, M_exit_behindshock, M_exit, P_exit, v_exit, F, P_star, T_star, rho_star, Re_star, T_exit, rho_exit = nozzle(list_of_P_ts[-1], list_of_T_ts[-1], P_amb, d_star, expansion_ratio, half_angle, gas_type)
@@ -142,10 +143,11 @@ for T in list_of_Tts:
 	# This is due to the fact that the last element will be calculated for Pt < P_amb, which is not realistic.
 	del list_of_P_ts[-1], list_of_T_ts[-1], list_of_chamber_densities[-1], time[-1], m_gas[-1]
 
-	single_iter = pd.DataFrame(data={'mdot': list_of_mdots, 'thrust': list_of_thrusts})
-	label = str(T)
-	data_dict[label] = single_iter
-
+	single_iter = pd.DataFrame(data={'time': [x + 0.6 for x in time], 'P_t': [(x / 6894.76) - 14.7 for x in list_of_P_ts], 'thrust': [x * 1000 for x in list_of_thrusts]})
+	single_iter['Time Step'] = '{} s'.format(time_step)
+	data_dict = data_dict.append(single_iter)
+	# label = str(time_step)
+	# data_dict[label] = single_iter
 
 
 # ## ==================================================================================
@@ -237,26 +239,26 @@ for i in range(0, len(time)):
 
 # ## ---- Single plenum discharge tests -----------------------------------------------
 
-# test_nos = [
-# 			'20191130_131419', # 114.7 psia, 0.6 mm nozzle, raw data in g (multiply by 9.81)
-# 			'20191130_131515',
-# 			'20191130_131607',
-# 			'20191130_131624',
-# 			'20191130_131644'
-# 			]  
-# steady_state = False
-# mult_by_g = True
-
-
 test_nos = [
-			'20191223_183658', # 114.7 psia, 0.4 mm nozzle, raw data in mN (do not multiply by 9.81)
-			'20191223_183725',
-			'20191223_183832',
-			'20191223_183908',
-			'20191223_183945'
+			'20191130_131419', # 114.7 psia, 0.6 mm nozzle, raw data in g (multiply by 9.81)
+			'20191130_131515',
+			'20191130_131607',
+			'20191130_131624',
+			'20191130_131644'
 			]  
 steady_state = False
-mult_by_g = False
+mult_by_g = True
+
+
+# test_nos = [
+# 			'20191223_183658', # 114.7 psia, 0.4 mm nozzle, raw data in mN (do not multiply by 9.81)
+# 			'20191223_183725',
+# 			'20191223_183832',
+# 			'20191223_183908',
+# 			'20191223_183945'
+# 			]  
+# steady_state = False
+# mult_by_g = False
 
 ## ----------------------------------------------------------------------------------
 
@@ -268,7 +270,11 @@ else:
 	data_marker = 'o'
 
 fig1, axs = plt.subplots(2, 1, figsize=figsize, dpi=dpi, sharex='col')
-fig1.suptitle('Steady-State Pressure & Thrust Measurements\n({0} Trials) ($\\varnothing${1} mm, $\\lambda$={2})'.format(len(test_nos), d_star*1000, expansion_ratio), fontsize=fontsize)
+if steady_state:
+	fig1.suptitle('Steady-State Pressure & Thrust Measurements\n({0} Trials) ($\\varnothing${1} mm, $\\lambda$={2})'.format(len(test_nos), d_star*1000, expansion_ratio), fontsize=fontsize)
+else:
+	# fig1.suptitle('Single Plenum Discharge Pressure & Thrust Measurements\n({0} Trials) ($\\varnothing${1} mm, $\\lambda$={2})'.format(len(test_nos), d_star*1000, expansion_ratio), fontsize=fontsize)
+	fig1.suptitle('Effect Time Step on Simulation Accuracy\n($\\varnothing${0} mm, $\\lambda$={1})'.format(d_star*1000, expansion_ratio), fontsize=fontsize)
 
 td1 = []  # Pressure
 for trial, test_no in reversed(list(enumerate(test_nos))):
@@ -282,20 +288,29 @@ sns.lineplot(ax=axs[0],
 			 x='Time (s)',
 			 y='Float Pressure (psig)',
 			 data=td1,
-			#  hue='Trial', 
-			#  style='Trial',  # Show each trial individually instead of an aggregate
-			 estimator=np.mean,  # Show each trial individually instead of an aggregate
-			#  marker=data_marker
+			#  hue='Setpoint', 
+			#  style='Setpoint',  # Show each trial individually instead of an aggregate
+			#  estimator=np.mean,  # Show each trial individually instead of an aggregate
+			 marker=data_marker
 			 )
+			 
+if not steady_state:
+	sns.lineplot(ax=axs[0],
+				 data=data_dict,
+				 x='time',
+				 y='P_t',
+				 hue='Time Step'
+	)
+	# axs[0].plot([x+0.57 for x in data_dict[str(time_step)]['time']], [(x / 6894.76) - 14.7 for x in data_dict[str(time_step)]['P_t']], color='#ff7f0e', label='pres_inlet', linestyle='-', linewidth=linewidth)
+	axs[0].set_xlim(left=0.5, right=3)
+	axs[0].set_ylim(bottom=-5)
+
 axs[0].set_ylabel('Pressure, $psig$', color='#413839', fontsize=fontsize)
 axs[0].tick_params(colors='#413839')
 axs[0].grid(which='major', axis='both', linestyle='--')
-axs[0].set_ylim(bottom=0)
+# axs[0].set_ylim(bottom=0)
 
-if not steady_state:
-	axs[0].plot([x+0.57 for x in time], [(x / 6894.76) - 14.7 for x in list_of_P_ts], color='#ff7f0e', label='pres_inlet', linestyle='-', linewidth=linewidth)
-	axs[0].set_xlim(left=0, right=5)
-	axs[0].set_ylim(bottom=-5)
+
 
 box0 = axs[0].get_position()
 # axs[0].set_position([box0.x0 + box0.width * 0.05, box0.y0 + box0.height * 0.05, box0.width, box0.height])
@@ -313,19 +328,28 @@ sns.lineplot(ax=axs[1],
 			 x='Time (s)',
 			 y='Thrust Corrected (mN)',
 			 data=td2,
-			#  hue='Trial',  # Show each trial individually instead of an aggregate
-			#  style='Trial',  # Show each trial individually instead of an aggregate
-			 estimator=np.mean,  
-			#  marker=data_marker
+			#  hue='Setpoint',  # Show each trial individually instead of an aggregate
+			#  style='Setpoint',  # Show each trial individually instead of an aggregate
+			#  estimator=np.mean,  
+			 marker=data_marker
 			 )
+
+if not steady_state:
+	sns.lineplot(ax=axs[1],
+				x='time',
+				y='thrust',
+				data=data_dict,
+				hue='Time Step'
+	)
+	# axs[1].plot([x+0.57 for x in data_dict[str(time_step)]['time']], [x *1000 for x in data_dict[str(time_step)]['thrust']], color='#ff7f0e', label='thrust', linestyle='-', linewidth=linewidth)
+	axs[1].set_xlim(left=0.5, right=3)
+
 axs[1].set_xlabel('Time, s', color='#413839', fontsize=fontsize)
 axs[1].set_ylabel('Thrust, $mN$', color='#413839', fontsize=fontsize)
 axs[1].tick_params(colors='#413839')
 axs[1].grid(which='major', axis='both', linestyle='--')
 
-if not steady_state:
-	axs[1].plot([x+.57 for x in time], [x * 1000 for x in list_of_thrusts], color='#ff7f0e', label='thrust', linestyle='-', linewidth=linewidth)
-	axs[1].set_xlim(left=0, right=5)
+
 
 box1 = axs[1].get_position()
 # axs[1].set_position([box1.x0 + box1.width * 0.05, box1.y0 + box1.height * 0.05, box1.width, box1.height])

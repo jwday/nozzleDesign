@@ -20,10 +20,10 @@ P_t_init = 114.7 * 6894.76  	# Init Total Pressure, units of Pa (psia * 6894.76)
 P_amb = 14.7 * 6894.76  		# Ambient Pressure, units of Pa (psia * 6894.76)
 T_t_init = 0 + 273.15  			# Init Total Temperature, units of K (C + 273.15)
 vol = 30 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
-time_step = 0.001				# Simulation time step
+time_step = 0.01				# Simulation time step
 d_star = 0.6 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
 half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
-expansion_ratio = 1.3225		# Nozzle expansion ratio (Exit Area / Throat Area)
+expansion_ratio = 1.1850		# Nozzle expansion ratio (Exit Area / Throat Area)
 								# 	Inlet PSI ------- Ideal Expansion Ratio
 								# 		114.7 ------- 1.8048
 								# 		80 ---------- 1.6173
@@ -180,14 +180,16 @@ for i in range(0, len(time)):
 linewidth = 2
 fontsize = 12
 
-data = 		{ 'pressure': [x/1000 for x in list_of_P_ts],
+data = 		{ 
+			  'pressure': [x/1000 for x in list_of_P_ts],
 			  'thrust': [x*1000 for x in list_of_thrusts], 
 			  'impulse': [x*1000 for x in cumulative_impulse], 	
 			  'isp': ISP, 			
 			  'mach_exit': list_of_M_exits, 		
 			  'rho_star': list_of_rho_stars, 		
 			  'reynolds': [x/1000 for x in list_of_Re_stars],
-			  't_star': list_of_T_stars }
+			  't_star': list_of_T_stars
+			  }
 
 figname = 	{ 'pressure': 'Pressure',
 			  'thrust': 'Thrust', 							
@@ -232,21 +234,26 @@ ylabels = 	{ 'pressure': 'Pressure, $kPa$',
 
 num_rows = 4
 num_cols = 2
+# figsize = ((8.5/2)*num_cols, (11/4)*num_rows+0.5)				# Figure size (in)
 
 fig, axs = plt.subplots(num_rows, num_cols, figsize=figsize, dpi=dpi)
 for i, j in enumerate(data.items()):
-	row = math.floor(i/2 % (len(data)/2))
-	col = i % num_cols
+	if num_rows > 1 and num_cols > 1:
+		row = math.floor(i/2 % (len(data)/2))
+		col = i % num_cols
+		row_col = (row, col)
+	else:
+		row_col = (i)
 
 	# --- For Pressure on Secondary Axis ----
-	axs[row, col].plot(times[j[0]], data[j[0]], color='#1f77b4', label=ylabels[j[0]], linestyle='-', linewidth=linewidth)
-	axs[row, col].set_title(figname[j[0]])
-	axs[row, col].set_xlabel('Time, $s$', color='#413839', fontsize=fontsize)
-	axs[row, col].set_ylabel(ylabels[j[0]], color='#413839', fontsize=fontsize)
-	axs[row, col].tick_params(colors='#413839')
-	axs[row, col].set_ylim(bottom=0)
+	axs[row_col].plot(times[j[0]], data[j[0]], color='#1f77b4', label=ylabels[j[0]], linestyle='-', linewidth=linewidth)
+	axs[row_col].set_title(figname[j[0]])
+	axs[row_col].set_xlabel('Time, $s$', color='#413839', fontsize=fontsize)
+	axs[row_col].set_ylabel(ylabels[j[0]], color='#413839', fontsize=fontsize)
+	axs[row_col].tick_params(colors='#413839')
+	axs[row_col].set_ylim(bottom=0)
 	
-	# second_ax = axs[row, col].twinx()
+	# second_ax = axs[row_col].twinx()
 	# line1, = second_ax.plot(time, [x/1000 for x in list_of_P_ts], color='#1f77b4', label='pres_inlet', linestyle='-', linewidth=linewidth)
 	# line2, = second_ax.plot(time, [x/1000 for x in list_of_P_stars], color='#1f77b4', label='pres_throat', linestyle=':', linewidth=linewidth)
 	# line3, = second_ax.plot(time, [x/1000 for x in list_of_P_exits], color='#1f77b4', label='pres_exit', linestyle='--', linewidth=linewidth)
@@ -255,28 +262,31 @@ for i, j in enumerate(data.items()):
 
 
 	# --- For Pressure on Primary Axis ----
-	# axs[row, col].plot(time, [x/1000 for x in list_of_P_ts], color='#1f77b4', label='Inlet Pressure, kPa', linestyle='-', linewidth=linewidth)
-	# axs[row, col].plot(time, [x/1000 for x in list_of_P_stars], color='#1f77b4', label='Throat Pressure, kPa', linestyle=':', linewidth=linewidth)
-	# axs[row, col].plot(time, [x/1000 for x in list_of_P_exits], color='#1f77b4', label='Exit Pressure, kPa', linestyle='--', linewidth=linewidth)
-	# axs[row, col].set_title(figname[j[0]])
-	# axs[row, col].set_xlabel('Time, $s$', color='#413839', fontsize=fontsize)
-	# axs[row, col].set_ylabel('Pressure, kPa', color='#413839', fontsize=fontsize)
-	# axs[row, col].tick_params(colors='#413839')
+	# axs[row_col].plot(time, [x/1000 for x in list_of_P_ts], color='#1f77b4', label='Inlet Pressure, kPa', linestyle='-', linewidth=linewidth)
+	# axs[row_col].plot(time, [x/1000 for x in list_of_P_stars], color='#1f77b4', label='Throat Pressure, kPa', linestyle=':', linewidth=linewidth)
+	# axs[row_col].plot(time, [x/1000 for x in list_of_P_exits], color='#1f77b4', label='Exit Pressure, kPa', linestyle='--', linewidth=linewidth)
+	# axs[row_col].set_title(figname[j[0]])
+	# axs[row_col].set_xlabel('Time, $s$', color='#413839', fontsize=fontsize)
+	# axs[row_col].set_ylabel('Pressure, kPa', color='#413839', fontsize=fontsize)
+	# axs[row_col].tick_params(colors='#413839')
 
-	# second_ax = axs[row, col].twinx()
+	# second_ax = axs[row_col].twinx()
 	# second_ax.plot(times[j[0]], data[j[0]], color='#ff7f0e', label=ylabels[j[0]], linestyle='-.', linewidth=linewidth)
 	# second_ax.set_ylabel(ylabels[j[0]], color='#413839', fontsize=fontsize)
 	# second_ax.tick_params(colors='#413839')
 	# second_ax.set_ylim(bottom=0)
 
+	box = axs[row_col].get_position()
+	axs[row_col].set_position([box.x0, box.y0, box.width * 1.05, box.height * 1.1])
+	axs[row_col].grid(which='major', axis='both', linestyle='--')
 
-	box = axs[row, col].get_position()
-	axs[row, col].set_position([box.x0, box.y0, box.width * 1.05, box.height * 1.1])
-	axs[row, col].grid(which='major', axis='both', linestyle='--')
-	fig.canvas.set_window_title('Nozzle Performance Metrics')
-	
+if num_rows > 1 and num_cols > 1:
+	axs[0, 0].plot(time_offset, [x*1000 for x in average_thrust], linestyle='--')
+else:
+	axs[0].plot(time_offset, [x*1000 for x in average_thrust], linestyle='--')
 
-fig.suptitle(r'Inlet, Throat, and Exit Pressure vs. Nozzle Metrics ($\varnothing${0} mm, $\lambda$={1})'.format(d_star*1000, expansion_ratio))
+fig.canvas.set_window_title('Nozzle Performance Metrics')
+fig.suptitle('Performance Metrics for Single Plenum Discharge\n'r'({} cm$^3$, $\varnothing${} mm, $\lambda$={})'.format(vol*10**6, d_star*1000, expansion_ratio))
 # fig.legend((line1, line2, line3), ('Inlet Pressure', 'Throat Pressure', 'Exit Pressure'), loc='center', bbox_to_anchor=(0.5, 0.05), ncol=3, frameon=True, fontsize=fontsize, edgecolor='255', borderpad=1)
 plt.tight_layout()
 plt.subplots_adjust(bottom=0.15)

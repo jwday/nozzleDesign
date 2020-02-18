@@ -20,11 +20,12 @@ gas_type = 'CO2'				# Gas Choices: R236fa, R134a, N2, CO2, air
 P_t_init = 114.7 * 6894.76  	# Init Total Pressure, units of Pa (psia * 6894.76)
 P_amb = 14.7 * 6894.76  		# Ambient Pressure, units of Pa (psia * 6894.76)
 T_t_init = 0 + 273.15  			# Init Total Temperature, units of K (C + 273.15)
-vol = 30 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
-time_step = 0.001				# Simulation time step
-d_star = 0.6 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
+vol = 26 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
+time_step = 0.01				# Simulation time step
+d_star = 0.18 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
 half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
-bit_tip_dia = 0.2 / 1000		# (Conical) Engraving bit tip diameter, used to determine drill depth for optimized nozzle expansion ratio
+bit_tip_dia = 0.1 / 1000		# (Conical) Engraving bit tip diameter, used to determine drill depth for optimized nozzle expansion ratio
+
 figsize = (6, 4.5)				# Figure size (in)
 dpi = 150						# Figure dpi
 
@@ -187,10 +188,10 @@ linewidth = 2
 fontsize = 12
 
 fig1, axs = plt.subplots(2, 1, figsize=figsize, dpi=dpi, sharex='col')
-fig1.title('Net Impulse & Drill Depth vs. Expansion Ratio')
+fig1.suptitle('Net Impulse & Drill Depth vs. Expansion Ratio')
 
 axs[0].plot(list_of_expansion_ratios, [x*1000 for x in list_of_cumulative_impulses], color='#ff7f0e', linestyle='-', linewidth=linewidth)
-axs[0].set_title('Required Drill Depth for Varying Expansion Ratio')
+# axs[0].set_title('Required Drill Depth for Varying Expansion Ratio')
 axs[0].set_ylabel('Net Impulse, mN-s', color='#413839', fontsize=fontsize)
 axs[0].tick_params(colors='#413839')
 axs[0].grid(which='major', axis='both', linestyle='--')
