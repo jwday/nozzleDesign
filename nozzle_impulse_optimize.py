@@ -138,10 +138,10 @@ for expansion_ratio in list_of_expansion_ratios:
 
 		# THIS IS INVALD. You have to...
 		# 1. Determine the NEW enthalpy after some of the mass has left.
-		# list_of_T_ts.append( list_of_T_ts[-1]*(list_of_chamber_densities[-1]/list_of_chamber_densities[-2])**(k-1) )
-		list_of_T_ts.append( list_of_T_ts[-1] )  # Ideal gas model states that, for FREE EXPANSION OF A GAS, temperature is constant
-		# list_of_P_ts.append( list_of_P_ts[-1]*(list_of_chamber_densities[-1]/list_of_chamber_densities[-2])**k )
-		list_of_P_ts.append( list_of_chamber_densities[-1]*R*list_of_T_ts[-1] )
+		list_of_T_ts.append( list_of_T_ts[-1]*(list_of_chamber_densities[-1]/list_of_chamber_densities[-2])**(k-1) )
+		# list_of_T_ts.append( list_of_T_ts[-1] )  # Ideal gas model states that, for FREE EXPANSION OF A GAS, temperature is constant
+		list_of_P_ts.append( list_of_P_ts[-1]*(list_of_chamber_densities[-1]/list_of_chamber_densities[-2])**k )
+		# list_of_P_ts.append( list_of_chamber_densities[-1]*R*list_of_T_ts[-1] )
 
 
 	# By the nature of this loop, anything that has an init value will end up with one extra element in its list
