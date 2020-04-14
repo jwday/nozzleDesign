@@ -23,7 +23,7 @@ vol = 30 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
 time_step = 0.01				# Simulation time step
 d_star = 0.6 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
 half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
-expansion_ratio = 1.1850		# Nozzle expansion ratio (Exit Area / Throat Area)
+expansion_ratio = 1.3225		# Nozzle expansion ratio (Exit Area / Throat Area)
 								# 	Inlet PSI ------- Ideal Expansion Ratio
 								# 		114.7 ------- 1.8048
 								# 		80 ---------- 1.6173
