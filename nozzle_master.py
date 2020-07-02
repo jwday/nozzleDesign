@@ -15,20 +15,29 @@ from matplotlib.lines import Line2D
 ## ---- USER OPTIONS ----------------------------------------------------------------
 ## ==================================================================================
 
-gas_type = 'R134a'				# Gas Choices: R236fa, R134a, N2, CO2, H2, air
-P_t_init = 82.9 * 6894.76  		# Init Total Pressure, units of Pa (psia * 6894.76)
-P_amb = 0 * 6894.76  			# Ambient Pressure, units of Pa (psia * 6894.76)
-T_t_init = 20 + 273.15  		# Init Total Temperature, units of K (C + 273.15)
-vol = 10.5 / 10**6  			# Plenum volume, units of m^3 (cm^3 / 10^6)
-d_star = 0.165 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
+gas_type = 'CO2'				# Gas Choices: R236fa, R134a, N2, CO2, H2, air
+P_t_init = 114.7 * 6894.76  	# Init Total Pressure, units of Pa (psia * 6894.76)
+P_amb = 14.7 * 6894.76  		# Ambient Pressure, units of Pa (psia * 6894.76)
+T_t_init = 0 + 273.15  			# Init Total Temperature, units of K (C + 273.15)
+vol = 30 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
+d_star = 0.6 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
 cutoff_cond = 0.0001			# Cutoff condition, defined by the fractional change in pressure (relative to P_t_init) per second, units of 1/sec
 half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
-expansion_ratio = 30			# Nozzle expansion ratio (Exit Area / Throat Area)
+expansion_ratio = 1.17			# Nozzle expansion ratio (Exit Area / Throat Area)
 								# 	Inlet PSI ------- Ideal Expansion Ratio
 								# 		114.7 ------- 1.8048
 								# 		80 ---------- 1.6173
 								# 		65 ---------- 1.3225
-								#	Impulse is maximized when Exp Ratio = ~1.1850
+								#	Impulse is maximized (90.6 mN-s) when Exp Ratio = ~1.17 for CO2 @ 114.7psi in, 14.7 out, 0C, 25cc vol, 0.4mm dia, 10 deg half-angle
+								# 		1.17	90.6	100.0%
+								#		1.30	90.3	 99.7%
+								#		1.40	89.5	 98.8%
+								#		1.50	88.6	 97.8%
+								#		1.60	87.5	 96.6%
+								#		1.70	86.3	 95.3%
+								#		1.80	85.0	 93.8%
+								#		1.90	83.7	 
+								#		2.0		82.3
 figsize = (7.5, 4)				# Figure size (in)
 dpi = 150						# Figure dpi
 
@@ -238,14 +247,14 @@ linewidth = 2
 fontsize = 12
 
 data = 		{ 
-			#   'pressure': [x/1000 for x in list_of_P_ts],
-			#   'thrust': [x*1000 for x in list_of_thrusts], 
-			#   'impulse': [x*1000 for x in cumulative_impulse], 	
+			  'pressure': [x/1000 for x in list_of_P_ts],
+			  'thrust': [x*1000 for x in list_of_thrusts], 
+			  'impulse': [x*1000 for x in cumulative_impulse], 	
 			#   'isp': ISP, 			
 			#   'mach_exit': list_of_M_exits, 		
 			  'P_exit': [x/1000 for x in list_of_P_exits],	
 			#   'reynolds': [x/1000 for x in list_of_Re_stars],
-			  't_exit': list_of_T_exits
+			#   't_exit': list_of_T_exits
 			  }
 
 figname = 	{
@@ -292,7 +301,7 @@ ylabels = 	{
 # 			  'rho_star': '#ff7f0e', 				
 # 			  'reynolds': '#ff7f0e' }
 
-num_rows = 1
+num_rows = 2
 num_cols = 2
 # figsize = ((8.5/2)*num_cols, (11/4)*num_rows+0.5)				# Figure size (in)
 
@@ -317,6 +326,8 @@ for i, j in enumerate(data.items()):
 		axs[row_col].plot([times[j[0]][0], times[j[0]][-1]], [P_trip/1000, P_trip/1000], color='#FF0000', label='Critical Pressure', linestyle='-', linewidth=linewidth)
 	if j[0] == 't_exit':
 		axs[row_col].plot([times[j[0]][0], times[j[0]][-1]], [T_trip, T_trip], color='#FF0000', label='Critical Temperature', linestyle='-', linewidth=linewidth)
+	if j[0] == 'thrust':
+		axs[row_col].plot(times[j[0]], [x*1000 for x in average_thrust], color='#FF0000', label='Avg Thrust', linestyle='--', linewidth=linewidth)
 
 	# second_ax = axs[row_col].twinx()
 	# line1, = second_ax.plot(time, [x/1000 for x in list_of_P_ts], color='#1f77b4', label='pres_inlet', linestyle='-', linewidth=linewidth)
@@ -355,7 +366,7 @@ fig.suptitle('Performance Metrics for Single Plenum Discharge\n'r'({} cm$^3$, $\
 # fig.legend((line1, line2, line3), ('Inlet Pressure', 'Throat Pressure', 'Exit Pressure'), loc='center', bbox_to_anchor=(0.5, 0.05), ncol=3, frameon=True, fontsize=fontsize, edgecolor='255', borderpad=1)
 plt.tight_layout()
 plt.subplots_adjust(bottom=0.15)
-plt.subplots_adjust(top=0.925)
+plt.subplots_adjust(top=0.8)
 plt.show()
 
 # print('Nozzle Exit Pressure: ', list_of_P_exits[0] / 6894.76)

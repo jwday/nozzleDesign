@@ -16,17 +16,17 @@ from data_handling_funcs import *
 ## ---- USER OPTIONS -----------------------------------------------------------------
 ## ==================================================================================
 
-gas_type = 'R134a'				# Gas Choices: R236fa, R134a, N2, CO2, air
-P_t_init = 82.9 * 6894.76  		# Init Total Pressure, units of Pa (psia * 6894.76)
-P_amb = 0 * 6894.76  			# Ambient Pressure, units of Pa (psia * 6894.76)
-T_t_init = 20 + 273.15  		# Init Total Temperature, units of K (C + 273.15)
+gas_type = 'CO2'				# Gas Choices: R236fa, R134a, N2, CO2, air
+P_t_init = 114.7 * 6894.76  		# Init Total Pressure, units of Pa (psia * 6894.76)
+P_amb = 14.7 * 6894.76  			# Ambient Pressure, units of Pa (psia * 6894.76)
+T_t_init = 0 + 273.15  		# Init Total Temperature, units of K (C + 273.15)
 # list_of_Tts = [223, 293]
-vol = 10.5 / 10**6  			# Plenum volume, units of m^3 (cm^3 / 10^6)
+vol = 25 / 10**6  			# Plenum volume, units of m^3 (cm^3 / 10^6)
 cutoff_cond = 0.00001
-list_of_time_steps = [0.25, 0.1, 0.01, 0.001]
-d_star = 0.165 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
+list_of_time_steps = [0.01]
+d_star = 0.5 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
 half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
-expansion_ratio = 30			# Nozzle expansion ratio (Exit Area / Throat Area)
+expansion_ratio = 1.1850			# Nozzle expansion ratio (Exit Area / Throat Area)
 								# 	Inlet PSI ------- Ideal Expansion Ratio
 								# 		114.7 ------- 1.8048
 								# 		80 ---------- 1.6173
@@ -58,7 +58,7 @@ if gas_type == 'N2':
 	
 if gas_type == 'CO2':
 	gas_label = 'CO$_{2}$'
-	right_limit = 1.3
+	right_limit = 3.
 	k = 1.289
 	R = 8.314/0.04401  # Specific gas constant (J/kg-K)
 	T_trip = 216.58  # Triple point temperature (K)

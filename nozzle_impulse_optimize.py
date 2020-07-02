@@ -20,10 +20,25 @@ P_t_init = 114.7 * 6894.76  	# Init Total Pressure, units of Pa (psia * 6894.76)
 P_amb = 14.7 * 6894.76  		# Ambient Pressure, units of Pa (psia * 6894.76)
 T_t_init = 0 + 273.15  			# Init Total Temperature, units of K (C + 273.15)
 vol = 30 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
-cutoff_cond = 0.0001			# Cutoff condition, defined by the fractional change in pressure (relative to P_t_init) per second, units of 1/sec
+cutoff_cond = 0.001				# Cutoff condition, defined by the fractional change in pressure (relative to P_t_init) per second, units of 1/sec
 d_star = 0.6 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
 list_of_expansion_ratios = [x/100 for x in np.arange(100, 1000, 10).tolist()]  # Gotta do it like this to circumvent floating point precision errors w/ the .tolist method
-half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
+list_of_expansion_ratios = [x for x in np.arange(1.0, 2.0, 0.01)]
+								# 	Inlet PSI ------- Ideal Expansion Ratio
+								# 		114.7 ------- 1.8048
+								# 		80 ---------- 1.6173
+								# 		65 ---------- 1.3225
+								#	Impulse is maximized (90.6 mN-s) when Exp Ratio = ~1.17 for CO2 @ 114.7psi in, 14.7 out, 0C, 25cc vol, 0.4mm dia, 10 deg half-angle
+								# 		1.17	90.6	100.0%
+								#		1.30	90.3	 99.7%
+								#		1.40	89.5	 98.8%
+								#		1.50	88.6	 97.8%
+								#		1.60	87.5	 96.6%
+								#		1.70	86.3	 95.3%
+								#		1.80	85.0	 93.8%
+								#		1.90	83.7	 
+								#		2.0		82.3
+half_angle = 10  				# (Conical) Nozzle expansion half-angle (degrees)
 bit_tip_dia = 0.1 / 1000		# (Conical) Engraving bit tip diameter, used to determine drill depth for optimized nozzle expansion ratio
 
 figsize = (7.5, 4.5)			# Figure size (in)
@@ -249,8 +264,9 @@ fontsize = 12
 
 fig1, axs = plt.subplots(2, 1, figsize=figsize, dpi=dpi, sharex='col')
 # fig1.suptitle( '          Net Impulse & Drill Depth vs. Expansion Ratio')
-fig1.suptitle( '          Net Impulse & Nozzle Length vs. Expansion Ratio', y=0.95)
-axs[0].set_title(r'({}, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm)'.format(gas_label, vol*10**6, d_star*1000), fontsize=9)
+fig1.suptitle( '          Net Impulse & Nozzle Length vs. Expansion Ratio', y=1)
+# axs[0].set_title(r'({}, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm)'.format(gas_label, vol*10**6, d_star*1000), fontsize=9)
+axs[0].set_title(r'$P_0$={} kPa, $P_{{amb}}$={} kPa, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, Prop: {})'.format(round(P_t_init/1000, 1), round(P_amb/1000, 1), vol*10**6, d_star*1000, gas_label), fontsize=9)
 # axs[0].set_title(r'$P_0 = $' + str(int(P_t_init/1000)) + r' kPa, $P_{amb} = $' + str(int(P_amb/1000)) + ' kPa, Propellent: ' + gas_type, fontsize=10)
 
 axs[0].plot(list_of_expansion_ratios, [x*1000 for x in list_of_cumulative_impulses], color='#ff7f0e', linestyle='-', linewidth=linewidth)
