@@ -1,6 +1,6 @@
 # Steady-state Isentropic Nozzle Flow: Pressure sweep for constant temperature
 
-from nozzle_code import nozzle
+from nozzle_code_2 import nozzle
 import matplotlib.pyplot as plt
 from scipy import stats
 import math

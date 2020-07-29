@@ -16,10 +16,10 @@ from matplotlib.lines import Line2D
 ## ==================================================================================
 
 gas_type = 'CO2'				# Gas Choices: R236fa, R134a, N2, CO2, H2, air
-P_t_init = 114.7 * 6894.76  	# Init Total Pressure, units of Pa (psia * 6894.76)
-P_amb = 14.7 * 6894.76  		# Ambient Pressure, units of Pa (psia * 6894.76)
-T_t_init = 0 + 273.15  			# Init Total Temperature, units of K (C + 273.15)
-vol = 30 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
+P_t_init = 114.7 * 6894.76  		# Init Total Pressure, units of Pa (psia * 6894.76)
+P_amb = 14.7 * 6894.76  			# Ambient Pressure, units of Pa (psia * 6894.76)
+T_t_init = 0 + 273.15  		# Init Total Temperature, units of K (C + 273.15)
+vol = 30 / 10**6  			# Plenum volume, units of m^3 (cm^3 / 10^6)
 d_star = 0.6 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
 cutoff_cond = 0.0001			# Cutoff condition, defined by the fractional change in pressure (relative to P_t_init) per second, units of 1/sec
 half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
@@ -38,7 +38,7 @@ expansion_ratio = 1.17			# Nozzle expansion ratio (Exit Area / Throat Area)
 								#		1.80	85.0	 93.8%
 								#		1.90	83.7	 
 								#		2.0		82.3
-figsize = (7.5, 4)				# Figure size (in)
+figsize = (6, 5)				# Figure size (in)
 dpi = 150						# Figure dpi
 
 
@@ -155,7 +155,7 @@ while delta_pres > cutoff_cond and list_of_P_ts[-1] > P_amb:
 	list_of_rho_exits.append(rho_exit)
 
 	average_thrust.append( np.average(list_of_thrusts) )
-	ISP.append( 1000*list_of_thrusts[-1]/(9.81*list_of_mdots[i]) )
+	ISP.append( 1000*list_of_thrusts[-1]/(9.81*list_of_mdots[-1]) )
 
 	if i == 0:  # If we're on the first time step...
 		list_of_dthrust.append(list_of_thrusts[-1]/time_step)  # Thrust starts here, so the abs. value will be positive and large. Doesn't matter what this actually is, though, because the end loop conditional won't ever see it
@@ -252,9 +252,10 @@ data = 		{
 			  'impulse': [x*1000 for x in cumulative_impulse], 	
 			#   'isp': ISP, 			
 			#   'mach_exit': list_of_M_exits, 		
-			  'P_exit': [x/1000 for x in list_of_P_exits],	
+			#   'P_exit': [x/1000 for x in list_of_P_exits],	
 			#   'reynolds': [x/1000 for x in list_of_Re_stars],
-			#   't_exit': list_of_T_exits
+			#   't_exit': list_of_T_exits,
+			#   'm_dot': list_of_mdots
 			  }
 
 figname = 	{
@@ -265,7 +266,9 @@ figname = 	{
 			  'mach_exit': 'Exit Mach Number', 	
 			  'P_exit': 'Exit Pressure', 		
 			  'reynolds': 'Throat Reynold\'s Number',
-			  't_exit': 'Exit Temperature' }
+			  't_exit': 'Exit Temperature',
+			  'm_dot': 'Mass Flow Rate'
+			}
 
 times = 	{ 
 			  'pressure': time,
@@ -275,7 +278,9 @@ times = 	{
 			  'mach_exit': time, 					
 			  'P_exit': time, 					
 			  'reynolds': time,
-			  't_exit': time }
+			  't_exit': time,
+			  'm_dot': time
+			}
 
 ylabels = 	{ 
 			  'pressure': 'Pressure, $kPa$',
@@ -285,7 +290,9 @@ ylabels = 	{
 			  'mach_exit': 'Mach', 				
 			  'P_exit': 'Pressure, $kPa$', 	
 			  'reynolds': 'Re x $10^3$',
-			  't_exit': 'Temperature, $K$' }
+			  't_exit': 'Temperature, $K$',
+			  'm_dot': 'Mass Flow Rate, $g/s$'
+			}
 
 # legend = 	{ 'thrust': 'Thrust', 							
 # 			  'impulse': 'Net Impulse', 							
@@ -301,8 +308,8 @@ ylabels = 	{
 # 			  'rho_star': '#ff7f0e', 				
 # 			  'reynolds': '#ff7f0e' }
 
-num_rows = 2
-num_cols = 2
+num_rows = 3
+num_cols = 1
 # figsize = ((8.5/2)*num_cols, (11/4)*num_rows+0.5)				# Figure size (in)
 
 fig, axs = plt.subplots(num_rows, num_cols, figsize=figsize, dpi=dpi)
@@ -352,9 +359,9 @@ for i, j in enumerate(data.items()):
 	# second_ax.tick_params(colors='#413839')
 	# second_ax.set_ylim(bottom=0)
 
-	box = axs[row_col].get_position()
-	axs[row_col].set_position([box.x0, box.y0, box.width * 1.05, box.height * 1.1])
-	axs[row_col].grid(which='major', axis='both', linestyle='--')
+	# box = axs[row_col].get_position()
+	# axs[row_col].set_position([box.x0, box.y0, box.width * 1.05, box.height * 1.1])
+	# axs[row_col].grid(which='major', axis='both', linestyle='--')
 
 # if num_rows > 1 and num_cols > 1:
 # 	axs[0, 0].plot(time, [x*1000 for x in average_thrust], linestyle='--')

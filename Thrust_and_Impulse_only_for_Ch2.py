@@ -19,7 +19,7 @@ gas_type = 'CO2'				# Gas Choices: R236fa, R134a, N2, CO2, H2, air
 P_t_init = 114.7 * 6894.76  	# Init Total Pressure, units of Pa (psia * 6894.76)
 P_amb = 14.7 * 6894.76  		# Ambient Pressure, units of Pa (psia * 6894.76)
 T_t_init = 0 + 273.15  			# Init Total Temperature, units of K (C + 273.15)
-vol = 30 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
+vol = 60 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
 d_star = 0.6 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
 cutoff_cond = 0.0001			# Cutoff condition, defined by the fractional change in pressure (relative to P_t_init) per second, units of 1/sec
 half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
@@ -29,8 +29,8 @@ expansion_ratio = 1.17			# Nozzle expansion ratio (Exit Area / Throat Area)
 								# 		80 ---------- 1.6173
 								# 		65 ---------- 1.3225
 								#	Impulse is maximized when Exp Ratio = ~1.1850 (1.17?)
-figsize = (7.5, 6)				# Figure size (in)
-dpi = 300						# Figure dpi
+figsize = (7.5, 4)				# Figure size (in)
+dpi = 150						# Figure dpi
 
 
 
@@ -45,7 +45,7 @@ if gas_type == 'R236fa':
 
 if gas_type == 'R134a':
 	gas_label = gas_type
-	right_limit = 40
+	right_limit = 28
 	k = 1.127  # Override value to compare results to MST paper
 	R = 8.314/0.10203  # Specific gas constant (J/kg-K)
 	T_trip = 169.85  # Triple point temperature (K)
@@ -57,7 +57,7 @@ if gas_type == 'N2':
 	
 if gas_type == 'CO2':
 	gas_label = 'CO$_{2}$'
-	right_limit = 1.4
+	right_limit = 1.4*2
 	k = 1.289
 	R = 8.314/0.04401  # Specific gas constant (J/kg-K)
 	T_trip = 216.58  # Triple point temperature (K)
@@ -235,7 +235,7 @@ fontsize = 12
 data = 		{ 
 			#   'pressure': [x/1000 for x in list_of_P_ts],
 			  'thrust': [x*1000 for x in list_of_thrusts], 
-			  'impulse': [x*1000 for x in cumulative_impulse], 	
+			#   'impulse': [x*1000 for x in cumulative_impulse], 	
 			#   'isp': ISP, 			
 			#   'mach_exit': list_of_M_exits, 		
 			#   'rho_star': list_of_rho_stars, 		
@@ -285,12 +285,18 @@ ylabels = 	{ 'pressure': 'Pressure, $kPa$',
 # 			  'reynolds': '#ff7f0e' }
 
 
-fig, axs = plt.subplots(3, 1, figsize=figsize, dpi=dpi, sharex=True)
+fig, axs = plt.subplots(2, 1, figsize=figsize, dpi=dpi, sharex=True)
 
 axs[0].plot(time, [x/1000 for x in list_of_P_ts], color='#1f77b4', label='Reservoir Pressure', linestyle='-', linewidth=linewidth)
 axs[0].set_ylabel('Pressure, $kPa$', color='#413839', fontsize=fontsize)
 axs[0].tick_params(colors='#413839')
 axs[0].grid(which='major', axis='both', linestyle='--')
+
+# axs[1].plot(time, [x for x in ISP], color='#1f77b4', label='Specific Impulse', linestyle='-', linewidth=linewidth)
+# axs[1].set_xlabel('Time, $s$', color='#413839', fontsize=fontsize)
+# axs[1].set_ylabel('Specific Impulse, $s$', color='#413839', fontsize=fontsize)
+# axs[1].tick_params(colors='#413839')
+# axs[1].grid(which='major', axis='both', linestyle='--')
 
 axs[1].plot(time, [x*1000 for x in list_of_thrusts], color='#1f77b4', label='Instantaneous Thrust', linestyle='-', linewidth=linewidth)
 axs[1].plot(time, [x*1000 for x in average_thrust], label='Cumulative Average Thrust', linestyle='--')
@@ -300,11 +306,11 @@ axs[1].grid(which='major', axis='both', linestyle='--')
 handles, labels = axs[1].get_legend_handles_labels()
 axs[1].legend(handles, labels, loc='best', fontsize=10)
 
-axs[2].plot(time, [x*1000 for x in cumulative_impulse], color='#1f77b4', label='Net Impulse', linestyle='-', linewidth=linewidth)
-axs[2].set_xlabel('Time, $s$', color='#413839', fontsize=fontsize)
-axs[2].set_ylabel('Net Impulse, $mN-s$', color='#413839', fontsize=fontsize)
-axs[2].tick_params(colors='#413839')
-axs[2].grid(which='major', axis='both', linestyle='--')
+# axs[2].plot(time, [x*1000 for x in cumulative_impulse], color='#1f77b4', label='Net Impulse', linestyle='-', linewidth=linewidth)
+# axs[2].set_xlabel('Time, $s$', color='#413839', fontsize=fontsize)
+# axs[2].set_ylabel('Net Impulse, $mN-s$', color='#413839', fontsize=fontsize)
+# axs[2].tick_params(colors='#413839')
+# axs[2].grid(which='major', axis='both', linestyle='--')
 
 # box1 = axs[1].get_position()
 # axs.set_position([box1.x0, box1.y0 + box1.height * 0.2, box1.width * 0.95, box1.height * 0.78])
@@ -318,13 +324,13 @@ axs[2].grid(which='major', axis='both', linestyle='--')
 axs[0].set_xlim(left=0, right=right_limit)
 axs[0].set_ylim(bottom=0)
 axs[1].set_ylim(bottom=0)
-axs[2].set_ylim(bottom=0)
+# axs[2].set_ylim(bottom=0)
 
 # handles2, labels2 = axs[1].get_legend_handles_labels()
 # handles.insert(2, handles2[0])
 # labels.insert(2, labels2[0])
 
-fig.suptitle('On-Ground Single Plenum Discharge Performance', y=0.95)
+fig.suptitle('In-Space Specific Impulse Change', y=0.98)
 axs[0].set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(gas_label, T_t_init, vol*10**6, d_star*1000, expansion_ratio), fontsize=9)
 fig.canvas.set_window_title('Nozzle Performance Metrics')
 
@@ -332,6 +338,8 @@ print('')
 print('t_step: ' + str(time_step) + ' sec')
 # print('Exit shock P_t: ' + str(round(list_of_P_ts[int(n_max - 5/time_step)], 3)))
 print('Net impulse: ' + str(round(cumulative_impulse[-1]*1000, 3)) + ' mN-s')
+print('Net avg thrust: ' + str(round(average_thrust[-1]*1000, 3)) + ' mN')
+print('Total time: ' + str(round(time[-1], 3)) + ' s')
 if end_loop_flag:
 	print('Time at 110 mN-s: ' + str(time[n_target]) + ' sec')
 	print('Thrust at 110 mN-s: ' + str(1000*average_thrust[n_target]) + ' mN')
