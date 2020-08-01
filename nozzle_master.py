@@ -92,7 +92,7 @@ time_step_init = 15.28*vol*(P_t_init-P_amb)/((P_t_init*d_star)**2)
 ## ==================================================================================
 
 # list_of_P_ts = list(np.linspace (P_t_max, P_amb, no_of_points))
-list_of_P_ts = [P_t_init]  # These need to be precribed at the first time step so the nozzle function can calculate the rest of the parameters at the same time step
+list_of_P_ts = [P_t_init]  # These need to be prescribed at the first time step so the nozzle function can calculate the rest of the parameters at the same time step
 list_of_T_ts = [T_t_init]
 list_of_chamber_densities = [density_init]
 m_gas = [m_init]

@@ -298,15 +298,15 @@ for time_step_init in list_of_time_steps:
 
 # ## ---- Single plenum discharge tests -----------------------------------------------
 
-test_nos = [
-			'20191130_131419', # 114.7 psia, 0.6 mm nozzle, raw data in g (multiply by 9.81)
-			'20191130_131515',
-			'20191130_131607',
-			'20191130_131624',
-			'20191130_131644'
-			]  
-steady_state = False
-mult_by_g = True
+# test_nos = [
+# 			'20191130_131419', # 114.7 psia, 0.6 mm nozzle, raw data in g (multiply by 9.81)
+# 			'20191130_131515',
+# 			'20191130_131607',
+# 			'20191130_131624',
+# 			'20191130_131644'
+# 			]  
+# steady_state = False
+# mult_by_g = True
 
 
 # test_nos = [
