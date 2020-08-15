@@ -10,27 +10,18 @@ import sys
 import seaborn as sns
 from data_handling_funcs import *
 from matplotlib.lines import Line2D
+import seaborn as sns
+import matplotlib as mpl
 
 ## ==================================================================================
 ## ---- USER OPTIONS ----------------------------------------------------------------
 ## ==================================================================================
 
-gas_type = 'CO2'				# Gas Choices: R236fa, R134a, N2, CO2, H2, air
-P_t_init = 114.7 * 6894.76  	# Init Total Pressure, units of Pa (psia * 6894.76)
-P_amb = 14.7 * 6894.76  		# Ambient Pressure, units of Pa (psia * 6894.76)
-T_t_init = 0 + 273.15  			# Init Total Temperature, units of K (C + 273.15)
-vol = 60 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
-d_star = 0.6 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
+gas_type = 'R134a'				# Gas choices: R236fa, R134a, N2, CO2, H2, air
+								# Gas choice will determine geometry based on desired output that was determined in the course of this project
 cutoff_cond = 0.0001			# Cutoff condition, defined by the fractional change in pressure (relative to P_t_init) per second, units of 1/sec
-half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
-expansion_ratio = 1.17			# Nozzle expansion ratio (Exit Area / Throat Area)
-								# 	Inlet PSI ------- Ideal Expansion Ratio
-								# 		114.7 ------- 1.8048
-								# 		80 ---------- 1.6173
-								# 		65 ---------- 1.3225
-								#	Impulse is maximized when Exp Ratio = ~1.1850 (1.17?)
 figsize = (7.5, 4)				# Figure size (in)
-dpi = 150						# Figure dpi
+dpi = 300						# Figure dpi
 
 
 
@@ -39,30 +30,46 @@ dpi = 150						# Figure dpi
 ## ---- SETUP PROPELLANT ------------------------------------------------------------
 ## ==================================================================================
 
+if gas_type == 'CO2':
+	P_t_init = 114.7 * 6894.76  	# Init Total Pressure, units of Pa (psia * 6894.76)
+	P_amb = 14.7 * 6894.76  		# Ambient Pressure, units of Pa (psia * 6894.76)
+	T_t_init = 0 + 273.15  			# Init Total Temperature, units of K (C + 273.15)
+	vol = 30 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
+	d_star = 0.6 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
+	half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
+	expansion_ratio = 1.17			# Nozzle expansion ratio (Exit Area / Throat Area)
+	gas_label = 'CO$_{2}$'
+	right_limit = 1.4*((vol * 10**6)/30)*(d_star * 1000)/(0.6) # For X-axis time scale
+	visc_loss_param = 0.39			# As determined from NASA TN D-3056
+	k = 1.289
+	R = 8.314/0.04401  				# Specific gas constant (J/kg-K)
+	T_trip = 216.58  				# Triple point temperature (K)
+	P_trip = 518500  				# Triple point pressure (Pa)
+
+if gas_type == 'R134a':
+	P_t_init = 82.9 * 6894.76  		# Init Total Pressure, units of Pa (psia * 6894.76)
+	P_amb = 0 * 6894.76  			# Ambient Pressure, units of Pa (psia * 6894.76)
+	T_t_init = 20 + 273.15  		# Init Total Temperature, units of K (C + 273.15)
+	vol = 11.2 / 10**6  			# Plenum volume, units of m^3 (cm^3 / 10^6)
+	d_star = 0.212 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
+	half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
+	expansion_ratio = 30			# Nozzle expansion ratio (Exit Area / Throat Area)
+	gas_label = 'R134a'
+	right_limit = 28*((vol * 10**6)/11.2)*(d_star * 1000)/(0.212) # For X-axis time scale
+	visc_loss_param = 4.0			# As determined from NASA TN D-3056
+	k = 1.127  						# Override value to compare results to MST paper
+	R = 8.314/0.10203  				# Specific gas constant (J/kg-K)
+	T_trip = 169.85  				# Triple point temperature (K)
+	P_trip = 389.56  				# Triple point pressure (Pa)
+
 if gas_type == 'R236fa':
 	k = 1.083  # Heat capacity ratio (Cp/Cv)
 	R = 8.314/0.152039  # Specific gas constant (J/kg-K)
 
-if gas_type == 'R134a':
-	gas_label = gas_type
-	right_limit = 28
-	k = 1.127  # Override value to compare results to MST paper
-	R = 8.314/0.10203  # Specific gas constant (J/kg-K)
-	T_trip = 169.85  # Triple point temperature (K)
-	P_trip = 389.56  # Triple point pressure (Pa)
-
 if gas_type == 'N2':
 	k = 1.039
-	R = 8.314/0.028014  # Specific gas constant (J/kg-K)
+	R = 8.314/0.028014  			# Specific gas constant (J/kg-K)
 	
-if gas_type == 'CO2':
-	gas_label = 'CO$_{2}$'
-	right_limit = 1.4*2
-	k = 1.289
-	R = 8.314/0.04401  # Specific gas constant (J/kg-K)
-	T_trip = 216.58  # Triple point temperature (K)
-	P_trip = 518500  # Triple point pressure (Pa)
-
 if gas_type == 'H2':
 	k = 1.410
 	R = 8.314/0.002016  # Specific gas constant (J/kg-K)
@@ -103,6 +110,8 @@ list_of_rho_stars = []
 list_of_Re_stars = []
 list_of_T_exits = []
 list_of_rho_exits = []
+list_of_thrust_coeffs = []
+list_of_visc_losses = []
 
 
 average_thrust = []
@@ -141,6 +150,9 @@ while delta_pres > cutoff_cond and list_of_P_ts[-1] > P_amb:
 	list_of_Re_stars.append(Re_star)
 	list_of_T_exits.append(T_exit)
 	list_of_rho_exits.append(rho_exit)
+	list_of_thrust_coeffs.append(F/(list_of_P_ts[-1] * np.pi*(d_star**2)/4))
+	list_of_visc_losses.append(visc_loss_param/np.sqrt(Re_star*np.tan(np.deg2rad(half_angle))))
+
 
 	average_thrust.append( np.average(list_of_thrusts) )
 	ISP.append( 1000*list_of_thrusts[-1]/(9.81*list_of_mdots[i]) )
@@ -234,23 +246,28 @@ fontsize = 12
 
 data = 		{ 
 			#   'pressure': [x/1000 for x in list_of_P_ts],
-			  'thrust': [x*1000 for x in list_of_thrusts], 
+			#   'thrust': [x*1000 for x in list_of_thrusts], 
 			#   'impulse': [x*1000 for x in cumulative_impulse], 	
 			#   'isp': ISP, 			
 			#   'mach_exit': list_of_M_exits, 		
 			#   'rho_star': list_of_rho_stars, 		
-			#   'reynolds': [x/1000 for x in list_of_Re_stars],
-			#   't_star': list_of_T_stars
+			  'reynolds': list_of_Re_stars,
+			#   't_star': list_of_T_stars,
+			#   'thrust_coeff': list_of_thrust_coeffs,
+			#   'visc_losses': [100*(y-x)/y for x, y in zip(list_of_visc_losses, list_of_thrust_coeffs)]
 			  }
 
 figname = 	{ 'pressure': 'Pressure',
-			  'thrust': 'Thrust', 							
+			  'thrust': 'Instantaneous Thrust', 							
 			  'impulse': 'Net Impulse', 							
 			  'isp': '$I_{SP}$', 			
 			  'mach_exit': 'Exit Mach Number', 	
 			  'rho_star': 'Throat Density', 		
 			  'reynolds': 'Throat Reynold\'s Number',
-			  't_star': 'Throat Temperature' }
+			  't_star': 'Throat Temperature',
+			  'thrust_coeff': 'Thrust Coefficient',
+			  'visc_losses': 'Viscous Loss Percentage'
+			  }
 
 times = 	{ 'pressure': time,
 			  'thrust': time, 								
@@ -259,7 +276,10 @@ times = 	{ 'pressure': time,
 			  'mach_exit': time, 					
 			  'rho_star': time, 					
 			  'reynolds': time,
-			  't_star': time }
+			  't_star': time,
+			  'thrust_coeff': time,
+			  'visc_losses': time
+			  }
 
 ylabels = 	{ 'pressure': 'Pressure, $kPa$',
 			  'thrust': 'Thrust, $mN$', 						
@@ -267,8 +287,15 @@ ylabels = 	{ 'pressure': 'Pressure, $kPa$',
 			  'isp': '$I_{SP}$, $s$', 		
 			  'mach_exit': 'Mach', 				
 			  'rho_star': 'Density, $kg/m^3$', 	
-			  'reynolds': 'Re x $10^3$',
-			  't_star': 'Temperature, $K$' }
+			  'reynolds': 'Reynolds No.',
+			  't_star': 'Temperature, $K$',
+			  'thrust_coeff': '$C_f$',
+			  'visc_losses': r'$\frac{C_f - C_{f_v}}{C_f}$ (%)'
+			  }
+
+titles = 	{ 'CO2': 'On-Ground Single Plenum Discharge Reynolds Number',
+			  'R134a': 'In-Space Single Plenum Discharge Reynolds Number'
+			}
 
 # legend = 	{ 'thrust': 'Thrust', 							
 # 			  'impulse': 'Net Impulse', 							
@@ -286,30 +313,51 @@ ylabels = 	{ 'pressure': 'Pressure, $kPa$',
 
 
 fig, axs = plt.subplots(2, 1, figsize=figsize, dpi=dpi, sharex=True)
+fig.suptitle(titles[gas_type], y=0.98)
+fig.canvas.set_window_title('Nozzle Performance Metrics')
+axs[0].set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(gas_label, T_t_init, vol*10**6, d_star*1000, expansion_ratio), fontsize=9)
 
-axs[0].plot(time, [x/1000 for x in list_of_P_ts], color='#1f77b4', label='Reservoir Pressure', linestyle='-', linewidth=linewidth)
+# Select what to plot based on which 'data' line is uncommented
+key, value = list(data.items())[0]
+# axs[0].plot(time, [x/1000 for x in list_of_P_ts], color='#1f77b4', label='Reservoir Pressure', linestyle='-', linewidth=linewidth)
+sns.lineplot(ax=axs[0], x='Time', y='Pressure', palette='colorblind', data=pd.DataFrame(zip(time, [x/1000 for x in list_of_P_ts]), columns=['Time', 'Pressure']), legend=False)
+sns.lineplot(ax=axs[1], x='Time', y=ylabels[key], palette='colorblind', data=pd.DataFrame(zip(times[key], data[key]), columns=['Time', ylabels[key]]), legend=False)
+if key == 'thrust':
+	# axs[1].plot(times[key], [x*1000 for x in average_thrust], label='Cumulative Average Thrust', linestyle='--')		# Only for thrust
+	sns.lineplot(ax=axs[1], x='Time', y='Cumulative Average Thrust', palette='colorblind', data=pd.DataFrame(zip(times[key], [x*1000 for x in average_thrust]), columns=['Time', 'Cumulative Average Thrust']), legend=False)
+
 axs[0].set_ylabel('Pressure, $kPa$', color='#413839', fontsize=fontsize)
-axs[0].tick_params(colors='#413839')
-axs[0].grid(which='major', axis='both', linestyle='--')
+axs[1].set_ylabel(ylabels[key], color='#413839', fontsize=fontsize)
 
-# axs[1].plot(time, [x for x in ISP], color='#1f77b4', label='Specific Impulse', linestyle='-', linewidth=linewidth)
-# axs[1].set_xlabel('Time, $s$', color='#413839', fontsize=fontsize)
-# axs[1].set_ylabel('Specific Impulse, $s$', color='#413839', fontsize=fontsize)
+axs[0].set_xlim(left=0, right=right_limit)
+axs[0].set_ylim(bottom=0)
+axs[1].set_ylim(bottom=0)
+if key == 'visc_losses':
+	axs[1].set_ylim(top=105)
+
+# axs[0].tick_params(colors='#413839')
 # axs[1].tick_params(colors='#413839')
+
+# axs[0].grid(which='major', axis='both', linestyle='--')
 # axs[1].grid(which='major', axis='both', linestyle='--')
 
-axs[1].plot(time, [x*1000 for x in list_of_thrusts], color='#1f77b4', label='Instantaneous Thrust', linestyle='-', linewidth=linewidth)
-axs[1].plot(time, [x*1000 for x in average_thrust], label='Cumulative Average Thrust', linestyle='--')
-axs[1].set_ylabel('Thrust, $mN$', color='#413839', fontsize=fontsize)
-axs[1].tick_params(colors='#413839')
-axs[1].grid(which='major', axis='both', linestyle='--')
-handles, labels = axs[1].get_legend_handles_labels()
-axs[1].legend(handles, labels, loc='best', fontsize=10)
+# handles, labels = axs[1].get_legend_handles_labels()
+# axs[1].legend(handles, labels, loc='best', fontsize=10)
 
+
+
+# axs[1].plot(time, [x for x in ISP], color='#1f77b4', label='Specific Impulse', linestyle='-', linewidth=linewidth)
+# axs[1].plot(times[key], data[key], color='#1f77b4', label=figname[key], linestyle='-', linewidth=linewidth)
 # axs[2].plot(time, [x*1000 for x in cumulative_impulse], color='#1f77b4', label='Net Impulse', linestyle='-', linewidth=linewidth)
-# axs[2].set_xlabel('Time, $s$', color='#413839', fontsize=fontsize)
+
+# axs[1].set_xlabel('Time, $s$', color='#413839', fontsize=fontsize)
+# axs[1].set_ylabel('Specific Impulse, $s$', color='#413839', fontsize=fontsize)
 # axs[2].set_ylabel('Net Impulse, $mN-s$', color='#413839', fontsize=fontsize)
+
+# axs[1].tick_params(colors='#413839')
 # axs[2].tick_params(colors='#413839')
+
+# axs[1].grid(which='major', axis='both', linestyle='--')
 # axs[2].grid(which='major', axis='both', linestyle='--')
 
 # box1 = axs[1].get_position()
@@ -320,19 +368,30 @@ axs[1].legend(handles, labels, loc='best', fontsize=10)
 # target_thrust_time = [-1, 28]
 # target_avg_thrust = axs.plot(target_thrust_time, target_thrust_line, label='Target Avg Thrust', color='black', linestyle=':', linewidth=linewidth/2)
 
-
-axs[0].set_xlim(left=0, right=right_limit)
-axs[0].set_ylim(bottom=0)
-axs[1].set_ylim(bottom=0)
 # axs[2].set_ylim(bottom=0)
 
 # handles2, labels2 = axs[1].get_legend_handles_labels()
 # handles.insert(2, handles2[0])
 # labels.insert(2, labels2[0])
 
-fig.suptitle('In-Space Specific Impulse Change', y=0.98)
-axs[0].set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(gas_label, T_t_init, vol*10**6, d_star*1000, expansion_ratio), fontsize=9)
-fig.canvas.set_window_title('Nozzle Performance Metrics')
+class ScalarFormatterForceFormat(mpl.ticker.ScalarFormatter):
+		def _set_format(self):  # Override function that finds format to use.
+			self.format = "%1.1f"  # Give format here
+
+for ax in axs.flat:
+		ax.legend(loc='upper right', fontsize=6, framealpha=0.9)
+		
+		yfmt = ScalarFormatterForceFormat()
+		yfmt.set_powerlimits((0,0))
+		ax.yaxis.set_major_formatter(yfmt)
+		ax.ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
+		ax.tick_params(axis='y', labelsize=6, pad=0)
+		ax.yaxis.offsetText.set_fontsize(6)
+
+		ax.tick_params(axis='x', labelsize=6, pad=0)
+		ax.xaxis.label.set_size(8)
+		ax.set(xlabel=r'Time $(sec)$')
+
 
 print('')
 print('t_step: ' + str(time_step) + ' sec')
