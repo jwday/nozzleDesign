@@ -41,6 +41,7 @@ def nozzle(k, R, M_crit_sub, M_crit_sup, P_t, T_t, rho_t, P_amb, d_star, expansi
 	## ==================================================================================
 	shock_in_nozzle_flag = False		# Default
 	flow_is_supersonic_flag = True		# Default
+	area_ratio_at_shock = None			# Default
 
 	# Case 1: Entirely subsonic. SONIC CONDITIONS DO NOT APPLY AND THEREFORE THROAT STATE MUST BE RECALCULATED.
 	if P_amb/P_t < 1 and P_amb/P_t >= PR_crit_sub:
@@ -72,10 +73,9 @@ def nozzle(k, R, M_crit_sub, M_crit_sup, P_t, T_t, rho_t, P_amb, d_star, expansi
 		# Flow is isentropic before and after the shock, but not across it.
 		# The total pressure decreases across the shock.
 		# Must solve (P_t)(A_star) = (P_t_exit*)(A_exit)f(M) to find Mach number at exit.
-
 		M_star = 1
-		M_exit_behindshock = np.sqrt( (1 + L*M_crit_sup**2) / (k*M_crit_sup**2 - L) )  					# Mach number at exit assuming a shock sits exactly at the exit. Should be < 1 by virtue of properties of normal shocks.
-		PR_exit_shock = 1/(np.sqrt( S*(P**(Q/2))*M_exit_behindshock*(1 + L*M_exit_behindshock**2) ))  	# Pressure ratio required to have a shock sit exactly at the nozzle exit, (P_amb/P_t)_exit_shock
+		M_exit_behindshock = np.sqrt( (1 + L*M_crit_sup**2) / (k*M_crit_sup**2 - L) )  					# Mach-shock relation (relates mach numbers just before and just after normal shock). This is the mach number just after the shock if the shock is at the exit.
+		PR_exit_shock = 1/(np.sqrt( (S*(P**Q)) * (M_exit_behindshock**2) * Z_func(M_exit_behindshock) ))  	# Pressure ratio required to have a shock sit exactly at the nozzle exit, (P_amb/P_t)_exit_shock
 
 		# Case 2a: Shock occurs inside the nozzle. Exit pressure = ambient and exit flow is subsonic.
 		if P_amb/P_t > PR_exit_shock:
@@ -86,7 +86,6 @@ def nozzle(k, R, M_crit_sub, M_crit_sup, P_t, T_t, rho_t, P_amb, d_star, expansi
 			sol1 = opti.fsolve(shock_function, x1, maxfev=100000, full_output=False, xtol=0.000000001)
 			M_exit = np.sqrt(sol1[0])
 			P_exit = P_amb
-			shock_in_nozzle_flag = True
 
 			# This block computes the location (in terms of area ratio) of the shock that presumably exists inside the nozzle
 			P_t_0 = P_t
@@ -98,6 +97,7 @@ def nozzle(k, R, M_crit_sub, M_crit_sup, P_t, T_t, rho_t, P_amb, d_star, expansi
 			sol2 = opti.fsolve(normal_shock_pressure_ratio, x2, maxfev=100000, full_output=False, xtol=0.000000001)
 			M_just_before_shock = np.sqrt(sol2[0])
 			area_ratio_at_shock = area_ratio(M_just_before_shock)
+			shock_in_nozzle_flag = True
 			flow_regime = 'normal shock in nozzle'
 
 		# Case 2b: Shock occurs exactly at nozzle exit. Exit pressure = ambient and exit flow is subsonic.
@@ -185,4 +185,4 @@ def nozzle(k, R, M_crit_sub, M_crit_sup, P_t, T_t, rho_t, P_amb, d_star, expansi
 
 
 	# return a whole lot of stuff
-	return P_star, T_star, rho_star, Re_star, v_star, P_exit, T_exit, rho_exit, M_exit, v_exit, c_exit, m_dot, F, CF, shock_in_nozzle_flag, flow_regime, F_mdotv, F_pdiff
+	return P_star, T_star, rho_star, Re_star, v_star, P_exit, T_exit, rho_exit, M_exit, v_exit, c_exit, m_dot, F, CF, flow_regime, area_ratio_at_shock, F_mdotv, F_pdiff
