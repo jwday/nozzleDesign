@@ -102,7 +102,7 @@ def create_phase_funcs(data_table_loc):
 			saturated_pres.append(np.nan)
 	log_saturated_pres = [np.log(x) for x in saturated_pres]																			# Behavior can be modeled and interpolated logarithmically (T vs log(P) is very linear)
 	f = interp1d(pd.DataFrame(saturated_temp).dropna()[0].values, pd.DataFrame(log_saturated_pres).dropna()[0].values, kind='quadratic', fill_value='extrapolate')		# Linearlly interpolate over T vs log(P), return a function f. Need to convert to df to drop na's to use quadratic fit
-	g = interp1d(pd.DataFrame(log_saturated_pres).dropna()[0].values, pd.DataFrame(saturated_temp).dropna()[0].values, kind='quadratic', fill_value='extrapolate')		# Linearlly interpolate over T vs log(P), return a function f. Need to convert to df to drop na's to use quadratic fit
+	g = interp1d(pd.DataFrame(log_saturated_pres).dropna()[0].values, pd.DataFrame(saturated_temp).dropna()[0].values, kind='quadratic', fill_value='extrapolate')		# Linearlly interpolate over T vs log(P), return a function g. Need to convert to df to drop na's to use quadratic fit
 
 	def saturated_pres_from_temp(temp):
 		h = np.e**f(temp)																												# When a temp is specified, use the function f to return a log(P), then exponentiate it to return P
@@ -137,13 +137,13 @@ for gas_type in gas_types:
 		R = 8.314/0.04401  				# Specific gas constant (J/kg-K)
 		T_trip = 216.58  				# Triple point temperature (K)
 		P_trip = 518500  				# Triple point pressure (Pa)
-		fg_pres_from_temp, fg_temp_from_pres = create_phase_funcs('../DESKTOP/CO2_props_NIST.xlsx')
+		fg_pres_from_temp, fg_temp_from_pres = create_phase_funcs('CO2_props_NIST.xlsx')
 
 		# Create a 2D function to return viscosity of CO2 at a given Temp + Pres, based on NIST data and using linear interpolation
 		# visc_CO2 = pd.read_csv('../DESKTOP/CO2_visc_PvT.csv')	# Viscosity in Pa*s
 		# visc_CO2.iloc[:,1:] = visc_CO2.iloc[:,1:].mul(1E6) # Change all Viscosity in Pa*s to Viscosity in uPa*s
 		# visc_func = interp2d([x*1E6 for x in [0.8,0.6,0.4,0.2,0.1]], visc_CO2['Temp (K)'].values, visc_CO2.iloc[:,1:].values)
-		visc_func = create_visc_func('../DESKTOP/CO2_props_NIST.xlsx')
+		visc_func = create_visc_func('CO2_props_NIST.xlsx')
 
 	elif gas_type == 'R134a':
 		P_t_init = 82.9 * 6894.76  		# Init Total Pressure, units of Pa (psia * 6894.76)
@@ -160,7 +160,7 @@ for gas_type in gas_types:
 		R = 8.314/0.10203  				# Specific gas constant (J/kg-K)
 		T_trip = 169.85  				# Triple point temperature (K)
 		P_trip = 389.56  				# Triple point pressure (Pa)
-		fg_pres_from_temp, fg_temp_from_pres = create_phase_funcs('../DESKTOP/R134a_props_NIST.xlsx')
+		fg_pres_from_temp, fg_temp_from_pres = create_phase_funcs('R134a_props_NIST.xlsx')
 
 		# visc_func = create_visc_func('../DESKTOP/R134a_props_NIST.xlsx')
 
@@ -185,7 +185,7 @@ for gas_type in gas_types:
 		# 	visc_R134a = pd.concat([visc_R134a, temp], axis=1)
 		# visc_func = interp2d([x*1E6 for x in [0.8,0.6,0.4,0.2,0.1,0.01]], visc_R134a['Temp (K)'].values, visc_R134a.iloc[:,1:].values)
 
-		visc_func = create_visc_func('../DESKTOP/R134a_props_NIST.xlsx')
+		visc_func = create_visc_func('R134a_props_NIST.xlsx')
 
 
 
@@ -607,17 +607,17 @@ times = {
 		}
 
 ylabels = {
-			'P_t': 				'Total Pressure, $kPa$',
+			'P_t': 				'Total Pressure, $Pa$',
 			'T_t': 				'Total Thrust, $K$', 						
 			'rho_t': 			'Total Density, $kg/m^3$',
 
-			'P_star': 			'Throat Pressure, $kPa$',
+			'P_star': 			'Throat Pressure, $Pa$',
 			'T_star': 			'Throat Temperature, $K$',
 			'rho_star': 		'Throat Density, $kg/m^3$', 		
 			'Re_star': 			'Throat Reynold\'s No.',
 			'v_star': 			'Throat Velocity, $m/s$', 				
 
-			'P_exit': 			'Exit Pressure, $kPa$',
+			'P_exit': 			'Exit Pressure, $Pa$',
 			'T_exit': 			'Exit Temperature, $K$',
 			'rho_exit': 		'Exit Density, $kg/m^3$',
 			'M_exit': 			'Exit Mach No.', 				
@@ -636,7 +636,7 @@ ylabels = {
 			'ISP': 				'$I_{SP}$, $s$', 		
 			'ARs at shock':	   r'Area Ratio, $\lambda$',
 
-			'P_fg_exit':		'Saturated Pressure, $kPa$',
+			'P_fg_exit':		'Saturated Pressure, $Pa$',
 			'T_fg_exit':		'Saturated Temperature, $K$',
 		   }
 
@@ -671,7 +671,7 @@ for i,key in enumerate(data):
 	axs[i].set_ylabel(ylabels[key], color='#413839', fontsize=fontsize)
 	axs[i].set_xlim(left=0)
 	# axs[i].set(xscale="log")
-	axs[i].set_ylim(bottom=0)
+	# axs[i].set_ylim(bottom=0)
 
 	axs[i].legend(loc='upper right', fontsize=6, framealpha=0.9)
 
@@ -685,7 +685,7 @@ for i,key in enumerate(data):
 	axs[i].tick_params(axis='x', labelsize=6, pad=0)
 	axs[i].xaxis.label.set_size(8)
 	axs[i].set(xlabel=r'Time $(sec)$')
-
+plt.show()
 
 fig, axs = plt.subplots(1,1, figsize=figsize, dpi=dpi, sharex=True)
 fig.suptitle('Single Plenum Discharge, In-space vs. On-ground', y=0.98)
