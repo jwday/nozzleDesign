@@ -12,6 +12,7 @@ import matplotlib as mpl
 from scipy.interpolate import interp1d
 from scipy.interpolate import interp2d
 import scipy.optimize as opti
+import itertools
 
 ## ==================================================================================
 ## ---- USER OPTIONS ----------------------------------------------------------------
@@ -66,6 +67,26 @@ all_data = pd.DataFrame(columns=[	'time',
 									'gas_type'])
 sat_data = pd.DataFrame(['gas type', 'real temp', 'real pres', 'interpolated temp', 'interpolated pres'])
 
+
+
+## --------------------------------------------------------------------------------
+# Define a plot formatter to use for plots and stuff
+class ScalarFormatterForceFormat(mpl.ticker.ScalarFormatter):
+		def _set_format(self):  # Override function that finds format to use.
+			self.format = "%1.1f"  # Give format here
+yfmt = ScalarFormatterForceFormat()
+yfmt.set_powerlimits((0,0))
+
+# sns.set()
+sns.axes_style("white")
+sns.set_style("whitegrid", {"xtick.major.size": 0, "ytick.major.size": 0, 'grid.linestyle': '--'})
+sns.set_context("paper", font_scale = 1, rc={"grid.linewidth": .5})
+# sns.set_palette("colorblind")
+
+# default_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+
+
 ## --------------------------------------------------------------------------------
 # Create a 2D function to return viscosity of a fluid at a given (P,T) based on NIST data and using linear interpolation 
 def create_visc_func(data_table_loc):
@@ -88,10 +109,11 @@ def create_visc_func(data_table_loc):
 	visc_fluid = pd.concat([visc_fluid, temps], axis=1)
 	pressures = []
 	for pres in list(fluid_props.keys()):	# Iterate over sheet names
-		f = fluid_props[pres]['Viscosity (uPa*s)'].rename(pres, inplace=True)
+		f = fluid_props[pres]['Viscosity (uPa*s)'].rename(pres, inplace=True)/1000000
 		visc_fluid = pd.concat([visc_fluid, f], axis=1)
 		pressures.append(fluid_props[pres]['Pressure (MPa)'][0]*1E6)
-	visc_func = interp2d(pressures, visc_fluid['Temperature (K)'].values, visc_fluid.iloc[:,1:].values)
+	visc_fluid = visc_fluid.dropna(axis=1, how='all').dropna(axis=0, how='any')
+	visc_func = interp2d(pressures[:5], visc_fluid['Temperature (K)'][:119].values, visc_fluid.iloc[:119,1:6].values)
 	return visc_func
 
 
@@ -124,25 +146,34 @@ def create_phase_funcs(data_table_loc):
 
 	## --------------------------------------------------------------------------------
 	# Function to set up plot of phase data, returns ax object
+	# OR USE CLAUSIUS-CLAPEYRON EQUATION? Need latent heat of sublimation for R134a
+	phase_data = pd.DataFrame(columns=['Temperature (K)', 'Pressure (Pa)', 'Phase', 'Dataset'])
+	phase_data = pd.concat([phase_data, pd.DataFrame({'Temperature (K)': saturated_temp, 'Pressure (Pa)':saturated_pres, 'Phase':'', 'Dataset':'NIST Data'})], ignore_index=True)
+
+	# Liquid-Vapor Phase Change Line
+	xnew_lv = np.arange(T_trip, max(saturated_temp)+10, 1)
+	ynew_lv = [saturated_pres_from_temp(x) for x in xnew_lv]
+	# ynew_lv_cc = [np.exp(-P_trip*(L/R)*((1/xnew_lv) - (1/T_trip)))]
+	phase_data = pd.concat([phase_data, pd.DataFrame({'Temperature (K)': xnew_lv, 'Pressure (Pa)':ynew_lv, 'Phase':'Liquid-Vapor Phase Equilibrium', 'Dataset':'Extrapolated'})], ignore_index=True)
 
 	# Solid-Vapor Phase Change Line
 	xnew_sv = np.arange(min(saturated_temp)-10, T_trip, 1)
 	ynew_sv = [saturated_pres_from_temp(x) for x in xnew_sv]
-	
-	# Liquid-Vapor Phase Change Line
-	xnew_lv = np.arange(T_trip, max(saturated_temp)+10, 1)
-	ynew_lv = [saturated_pres_from_temp(x) for x in xnew_lv]
+	phase_data = pd.concat([phase_data, pd.DataFrame({'Temperature (K)': xnew_sv, 'Pressure (Pa)':ynew_sv, 'Phase':'Solid-Vapor Phase Equilibrium', 'Dataset':'Extrapolated'})], ignore_index=True)
 
 	# Solid-Liquid Phase Change Line (estimated)
-	xnew_sl = [T_trip, T_trip]
+	xnew_sl = [T_trip, T_trip+.01]
 	ynew_sl = [P_trip, P_trip + 1000000]
+	phase_data = pd.concat([phase_data, pd.DataFrame({'Temperature (K)': xnew_sl, 'Pressure (Pa)':ynew_sl, 'Phase':'Solid-Liquid Phase Equilibrium', 'Dataset':'Extrapolated'})], ignore_index=True)
 
 	fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
-	ax.plot(xnew_sv, ynew_sv, '-', label='Solid-Vapor Phase Equilibrium')
-	ax.plot(xnew_lv, ynew_lv, '-', label='Liquid-Vapor Phase Equilibirum')
-	ax.plot(xnew_sl, ynew_sl, '-', label='Solid-Liquid Phase Equilibirum')
-	ax.plot(saturated_temp, saturated_pres, 'o', label='Real Data')
-	ax.plot(T_trip, P_trip, 'o', label='Triple Point')
+	sns.scatterplot(ax=ax, x='Temperature (K)', y='Pressure (Pa)', palette='colorblind', data=phase_data[phase_data['Dataset']=='NIST Data'], hue='Dataset', zorder=10)
+	sns.lineplot(ax=ax, x='Temperature (K)', y='Pressure (Pa)', palette='colorblind', data=phase_data[phase_data['Dataset']=='Extrapolated'], hue='Phase')
+
+	# ax.plot(xnew_sv, ynew_sv, '-', label='Solid-Vapor Phase Equilibrium')
+	# ax.plot(xnew_lv, ynew_lv, '-', label='Liquid-Vapor Phase Equilibirum')
+	# ax.plot(xnew_sl, ynew_sl, '-', label='Solid-Liquid Phase Equilibirum')
+	# ax.plot(T_trip, P_trip, 'o', label='Triple Point')
 	
 	ax.set_title(r'{} Phase Diagram and Corresponding Nozzle Exit P-T Path'.format(gas_label))
 	ax.set_xlabel(r'Temperature, $K$')
@@ -156,6 +187,8 @@ def create_phase_funcs(data_table_loc):
 	return saturated_pres_from_temp, saturated_temp_from_pres, ax
 
 
+
+
 ## ==================================================================================
 ## ---- BEGIN LOOP ------------------------------------------------------------------
 ## ==================================================================================
@@ -167,7 +200,7 @@ for gas_type in gas_types:
 		gas_label = 'CO$_{2}$'
 		P_t_init = 114.7 * 6894.76  	# Init Total Pressure, units of Pa (psia * 6894.76)
 		P_amb = 14.7 * 6894.76  		# Ambient Pressure, units of Pa (psia * 6894.76)
-		T_t_init = 20 + 273.15  			# Init Total Temperature, units of K (C + 273.15)
+		T_t_init = 0 + 273.15  			# Init Total Temperature, units of K (C + 273.15)
 		vol = 30 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
 		d_star = 0.6 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
 		half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
@@ -176,12 +209,15 @@ for gas_type in gas_types:
 		visc_loss_param = 0.39			# As determined from NASA TN D-3056 (This stays pretty constant)
 		k = 1.289
 		R = 8.314/0.04401  				# Specific gas constant (J/kg-K)
+		L_lv = 574						# Enthalpy (latent heat) of vaporiation, kJ/kg
+		L_sl = 184						# Enthalpy (latent heat) of fusion, kJ/kg
+		L_sv = 571						# Enthalpy (latent heat) of sublimation, kJ/kg
 		T_trip = 216.58  				# Triple point temperature (K)
 		P_trip = 518500  				# Triple point pressure (Pa)
 		fg_pres_from_temp, fg_temp_from_pres, ax = create_phase_funcs('CO2_props_NIST.xlsx')
 
 		# Create a 2D function to return viscosity of CO2 at a given Temp + Pres, based on NIST data and using linear interpolation
-		# visc_CO2 = pd.read_csv('../DESKTOP/CO2_visc_PvT.csv')	# Viscosity in Pa*s
+		# visc_CO2 = pd.read_excel('CO2_props_NIST.xlsx')	# Viscosity in Pa*s
 		# visc_CO2.iloc[:,1:] = visc_CO2.iloc[:,1:].mul(1E6) # Change all Viscosity in Pa*s to Viscosity in uPa*s
 		# visc_func = interp2d([x*1E6 for x in [0.8,0.6,0.4,0.2,0.1]], visc_CO2['Temp (K)'].values, visc_CO2.iloc[:,1:].values)
 		visc_func = create_visc_func('CO2_props_NIST.xlsx')
@@ -194,7 +230,7 @@ for gas_type in gas_types:
 		vol = 11.2 / 10**6  			# Plenum volume, units of m^3 (cm^3 / 10^6)
 		d_star = 0.212 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
 		half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
-		expansion_ratio = 3				# Nozzle expansion ratio (Exit Area / Throat Area)
+		expansion_ratio = 4			# Nozzle expansion ratio (Exit Area / Throat Area)
 		right_limit = 28*((vol * 10**6)/11.2)*(d_star * 1000)/(0.212) # For X-axis time scale
 		visc_loss_param = 4.0			# As determined from NASA TN D-3056 (This varies a lot over Re numbers)
 		k = 1.127  						# Override value to compare results to MST paper
@@ -441,7 +477,8 @@ for gas_type in gas_types:
 		# Calculate these properties in preparation for the next loop. Loop will end if the newly calculated pressure drops below the ambient pressure.
 		m_gas.append(m_gas[-1] - m_dot*time_step) 
 		list_of_rho_ts.append(m_gas[-1]/vol)
-		list_of_T_ts.append( list_of_T_ts[-1]*(list_of_rho_ts[-1]/list_of_rho_ts[-2])**(k-1) )
+		# list_of_T_ts.append( list_of_T_ts[-1]*(list_of_rho_ts[-1]/list_of_rho_ts[-2])**(k-1) )
+		list_of_T_ts.append(T_t_init)
 		list_of_P_ts.append( list_of_P_ts[-1]*(list_of_rho_ts[-1]/list_of_rho_ts[-2])**k )
 		time.append((i+1)*time_step)  # The first iteration is at t=0, so the first time[] entry will be 0.
 
@@ -553,8 +590,31 @@ for gas_type in gas_types:
 	all_data = all_data.append(current_data, ignore_index=True)
 
 	# current_data.plot(ax=ax, x='T_exit', y='P_exit', data=[current_data['time'][0], current_data['time'][-1:]])
-	current_data.plot(ax=ax, x='T_exit', y='P_exit', label='Isentropic P-T Path')
-	ax.legend()
+	# current_data[current_data['flow regimes'].isin(['underexpanded', 'weak shock outside'])].plot(ax=ax, x='T_exit', y='P_exit', label='Isentropic P-T Path')
+	butts = current_data[current_data['flow regimes'].isin(['underexpanded', 'weak shock outside'])][['P_exit', 'T_exit']]
+	ax.plot(butts['T_exit'], butts['P_exit'], label='Isentropic Nozzle Exit P-T Path', linestyle='--')
+	ax.plot(butts['T_exit'][0], butts['P_exit'][0], 'o', fillstyle='none', label='Plenum Discharge Start')
+	ax.plot(butts['T_exit'][-1:], butts['P_exit'][-1:], 'x', label='Plenum Discharge Finish')
+	# ax.annotate('Begin', (butts['T_exit'][0], butts['P_exit'][0]))
+	# ax.annotate('End', (butts['T_exit'][-1:], butts['P_exit'][-1:]))
+
+	ax.yaxis.set_major_formatter(yfmt)
+	ax.ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
+	ax.tick_params(axis='y', labelsize=6, pad=0)
+	ax.yaxis.offsetText.set_fontsize(6)
+
+	ax.tick_params(axis='x', labelsize=6, pad=0)
+	ax.xaxis.label.set_size(8)
+
+	legend, handles = ax.get_legend_handles_labels()
+	del legend[0]
+	del legend[-2]
+	del handles[0]
+	del handles[-2]
+	legend = legend[-1:] + legend[:-1]
+	handles = handles[-1:] + handles[:-1]
+	ax.legend(legend, handles, loc='lower right')
+
 	plt.show()
 
 all_parameters = all_parameters.set_index('gas_type')
@@ -574,14 +634,14 @@ data = 	{
 			# 'T_t': 			all_data['T_t'],
 			# 'rho_t':			all_data['rho_t'],
 
-			# 'P_star': 		all_data['T_t'],
-			# 'T_star': 		all_data['T_t'],
+			# 'P_star': 		all_data['P_star'],
+			# 'T_star': 		all_data['T_star'],
 			# 'rho_star': 		all_data['rho_star'],
 			# 'Re_star': 		all_data['Re_star'],
 			# 'v_star': 		all_data['v_star'],
 
 			'P_exit': 		all_data['P_exit'],
-			# 'T_exit': 		all_data['T_exit'],
+			'T_exit': 		all_data['T_exit'],
 			# 'rho_exit': 		all_data['rho_exit'],
 			# 'M_exit': 		all_data['M_exit'], 
 			# 'v_exit': 		all_data['v_exit'],
@@ -591,7 +651,7 @@ data = 	{
 			# 'mdot': 			all_data['mdot'],
 			# 'F_mdotv': 		all_data['F_mdotv'], 
 			# 'F_pdiff': 		all_data['F_pdiff'], 
-			'thrust': 		all_data['thrust'],
+			# 'thrust': 		all_data['thrust'],
 			# 'thrust_coeff': 	all_data['thrust_coeff'],
 			# 'visc_losses': 	all_data['visc_loss'],
 			# 'avg_thrust': 	all_data['avg_thrust'],
@@ -673,7 +733,7 @@ times = {
 
 ylabels = {
 			'P_t': 				'Total Pressure, $Pa$',
-			'T_t': 				'Total Thrust, $K$', 						
+			'T_t': 				'Total Temperature, $K$', 						
 			'rho_t': 			'Total Density, $kg/m^3$',
 
 			'P_star': 			'Throat Pressure, $Pa$',
@@ -729,11 +789,11 @@ for gas in gas_types:
 
 		if key=='P_exit':
 			# sns.lineplot(ax=axs[i], x=times['P_fg_exit'], y=all_data['P_fg_exit'], palette='colorblind', data=all_data[all_data['gas_type']==gas], legend='full')
-			axs[i].plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas]['P_fg_exit'], color='red', label='Phase Change at Nozzle Temp')
+			axs[i].plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas]['P_fg_exit'], color='red', label='Phase Change Pres at Exit Temp')
 			axs[i].plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas]['P_trip'], color='green', linestyle='--', label='Triple Point')
 		if key=='T_exit':
 			# sns.lineplot(ax=axs[i], x=times['T_fg_exit'], y=all_data['T_fg_exit'], palette='colorblind', data=all_data[all_data['gas_type']==gas], legend='full')
-			axs[i].plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas]['T_fg_exit'], color='red', label='Phase Change at Nozzle Pres')
+			axs[i].plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas]['T_fg_exit'], color='red', label='Phase Change Temp at Exit Pres')
 			axs[i].plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas]['T_trip'], color='green', linestyle='--', label='Triple Point')
 
 		axs[i].set_ylabel(ylabels[key], color='#413839', fontsize=fontsize)
@@ -778,14 +838,9 @@ axs.set_xlim(left=0.1)
 	# axs.set_ylim(bottom=100)
 
 
-class ScalarFormatterForceFormat(mpl.ticker.ScalarFormatter):
-		def _set_format(self):  # Override function that finds format to use.
-			self.format = "%1.1f"  # Give format here
-
 axs.legend(loc='upper right', fontsize=6, framealpha=0.9)
 
-yfmt = ScalarFormatterForceFormat()
-yfmt.set_powerlimits((0,0))
+
 axs.yaxis.set_major_formatter(yfmt)
 axs.ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
 axs.tick_params(axis='y', labelsize=6, pad=0)
