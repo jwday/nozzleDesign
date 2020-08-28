@@ -6,12 +6,11 @@ from scipy import stats
 import pandas as pd
 import numpy as np
 import seaborn as sns
-from data_handling_funcs import *
 import seaborn as sns
 import matplotlib as mpl
 import scipy.optimize as opti
 import itertools
-from helperFuncs import *
+from nozzle_helperFuncs import *
 
 
 ## ==================================================================================
@@ -21,14 +20,17 @@ from helperFuncs import *
 gas_types = ['CO2']	# Gas choices: R236fa, R134a, N2, CO2, H2, air
 								# Gas choice will determine geometry based on desired output that was determined in the course of this project
 d_upstream = 2 / 1000			# Upstream "pipe" diameter (really just the valve orifice diameter), units of m (mm / 1000)
-L_upstream = 20 / 1000			# Upstream "pipe length" aka path length through valve. Just an estimate.
+L_upstream = 40 / 1000			# Upstream "pipe length" aka path length through valve. Just an estimate.
 T_wall = 293					# Valve brass body wall tempertaure used to evaluate heat transfer conductivity
-m_brass	= 80 / 1000				# Mass brass, kg
+m_brass	= 60 / 1000				# Mass brass, kg
 cp_brass = 380					# Specific heat capacity of brass, J/kg-K
 cutoff_cond = 0.0001			# Cutoff condition, defined by the fractional change in pressure (relative to P_t_init) per second, units of 1/sec
 figsize = (7.5, 4)				# Figure size (in)
 dpi = 150						# Figure dpi
+fudge_factor = 1
 
+# Choose state transition process. 'mass-energy-balance', 'isentropic', 'isenthalpic', 'isothermal'
+process = 'mass-energy-balance'
 
 # Include thermal model?
 thermal_model = False
@@ -130,15 +132,23 @@ for gas_type in gas_types:
 		fluid_props_vol = pd.read_excel('CO2_props_costVol_NIST.xlsx', sheet_name=None)
 
 		fg_pres_from_temp, fg_temp_from_pres, phase_data = create_phase_funcs(fluid_props, P_trip, T_trip)
-		visc_func = create_visc_func_gas(fluid_props)
+		# visc_func = create_visc_func_gas(fluid_props)
+		
+		def visc_func(P,T):
+			f = 4.97025E-2*T + 1.337E-3
+			return np.array([f])
+
 		cp_func = create_cp_func(fluid_props)
 		cv_func = create_cv_func(fluid_props)
 		ktc_func = create_ktc_func(fluid_props)
 		h_from_PT_gas_func = create_h_from_PT_gas_func(fluid_props)
 		u_from_PT_gas_func = create_u_from_PT_gas_func(fluid_props)
+		r_from_PT_gas_func = create_r_from_PT_gas_func(fluid_props)
 
-		P_from_rh_func, T_from_rh_func = create_PT_from_rh_gas_func(fluid_props_vol)
 		P_from_ru_func, T_from_ru_func = create_PT_from_ru_gas_func(fluid_props_vol)
+		P_from_rh_func, T_from_rh_func = create_PT_from_rh_gas_func(fluid_props_vol)
+		P_from_rT_func = create_P_from_rT_gas_func(fluid_props_vol)
+		
 
 
 	elif gas_type == 'R134a':
@@ -168,7 +178,8 @@ for gas_type in gas_types:
 
 	# --------------------------------------------------------------------------------
 	# Calculate initial properties
-	rho_t_init = P_t_init/(Z*R*(T_t_init))  								# Initial density, kg/m^3 (or g/l), using GENERALIZED COMPRESSABILITY
+	# rho_t_init = P_t_init/(Z*R*(T_t_init))  								# Initial density, kg/m^3 (or g/l), using GENERALIZED COMPRESSABILITY
+	rho_t_init = r_from_PT_gas_func(P_t_init, T_t_init)[0]*1000				# Initial density, kg/m^3 (or g/l), using REAL DATA
 	mu_t_init = 1/rho_t_init  												# Initial specific volume, m^3/kg (or l/g)
 	m_init = rho_t_init*vol  												# Initial propellant mass, kg
 	u_sp_init = u_from_PT_gas_func(P_t_init, T_t_init)[0]*1000				# Initial specific internal energy, J/kg
@@ -177,32 +188,49 @@ for gas_type in gas_types:
 	time_step_init = 15.28*vol*(P_t_init-P_amb)/((P_t_init*d_star)**2)		# Time step, s
 
 	# Recalculate P_init based on rho_t_init and h_sp_init. I know it shouldn't be different, but it is, based on whichever function is being used (h_from_PT vs P_from_rh)
-	P_t_init = P_from_rh_func(rho_t_init, h_sp_init/1000)[0]*1000000
+	# P_t_init = P_from_rh_func(rho_t_init, h_sp_init/1000)[0]*1000000
 
 	## ==================================================================================
 	## ---- INIT DATA LISTS -------------------------------------------------------------
 	## ==================================================================================
 	time = [0]
-	list_of_P_ts = [P_t_init] 
-	list_of_T_ts = [T_t_init]
-	list_of_rho_ts = [rho_t_init]
-	list_of_mu_ts = [mu_t_init]
-	list_of_u_sp = [u_sp_init]
-	list_of_h_sp = [h_sp_init]
-	m_gas = [m_init]
+	P_t_plenum		= [P_t_init] 
+	T_t_plenum		= [T_t_init]
+	rho_t_plenum 	= [rho_t_init]
+	mu_t_plenum 	= [mu_t_init]
+	u_sp_plenum 	= [u_sp_init]
+	h_sp_plenum 	= [h_sp_init]
 
-	list_of_mdots = []
+	Re_upstream = []
+	Nu_upstream = []
+	Pr_upstream = []
+	visc_upstream 	= []
+	P_t_inlet		= [] 
+	T_t_inlet 		= []
+	T_inlet 		= []
+	rho_t_inlet 	= []
+	mu_t_inlet 		= []
+	M_inlet			= []
+
+	T_wall 			= [T_wall]
+	m_gas 			= [m_init]
+	list_of_mdots 	= []
+
+	list_of_P_stars = []
+	list_of_T_stars = []
+	list_of_rho_stars = []
+	list_of_M_stars = []
+	list_of_Re_stars = []
+
+	list_of_v_stars = []
+
 	list_of_P_exits = []
 	list_of_v_exits = []
 	list_of_c_exits = []
 	list_of_M_exits = []
+
 	list_of_thrusts = []
 	list_of_pressure_ratios = []
-	list_of_P_stars = []
-	list_of_T_stars = []
-	list_of_rho_stars = []
-	list_of_Re_stars = []
-	list_of_v_stars = []
 	list_of_T_exits = []
 	list_of_rho_exits = []
 	list_of_thrust_coeffs = []
@@ -220,6 +248,10 @@ for gas_type in gas_types:
 
 	list_of_P_fg_exit = []
 	list_of_T_fg_exit = []
+	list_of_P_fg_t = []
+	list_of_T_fg_t = []
+
+	iter = []
 
 
 	## ==================================================================================
@@ -250,6 +282,16 @@ for gas_type in gas_types:
 		Z = 1 + L*M**2
 		return Z
 
+	def rayleigh_machTempRelation(X, *S):
+		M1 = S[0]				# Mach number at station 1
+		T1 = S[1]				# Static temperature at station 1
+		T2 = S[2]				# Static temperature at station 2
+		f = ( ((1 + k*M1**2)/(1 + k*X))*(np.sqrt(X)/M1) )**2 - (T2/T1)
+		return f
+
+	def nusseltGnielinski(Re, Pr, f):
+		Nu = (f/8)*(Re - 1000)*Pr / (1 + 12.7*np.sqrt(f/8)*(Pr**(2/3) - 1))
+		return Nu
 
 	# --------------------------------------------------------------------------------
 	# Solve the Isentropic Mach Number-Area relation for the (critical) Mach Numbers at the exit
@@ -300,7 +342,7 @@ for gas_type in gas_types:
 	# Start with a P_t_init and T_t_init and repeatedly run the nozzle code
 	# Nozzle code will return throat and exit flow properties (along with thrust, ISP, impulse) based on supply properties
 	# Results are used to determine mass flow rate, which is then used to calculate new supply pressure
-	while delta_pres > cutoff_cond and list_of_P_ts[-1] > P_amb:
+	while delta_pres > cutoff_cond and P_t_plenum[-1] > P_amb:
 		if thermal_model:
 			# Put the CONSTANT PRESSURE temperature change here
 			# First calculate Nusselt number using the Gnielinski correlation
@@ -308,7 +350,6 @@ for gas_type in gas_types:
 			# ...to get the Reynolds number you need mass flow rate (nozzle function) and viscosity
 			# ...viscosity and mass flow rate both depend on temperature
 			# Realistically, the temperature will depend on the HTC and temperature gradient during this time period
-			# For the sake of brevity, let's linearize it about the Isentropic Temperature and determine all the parameters at THAT temperature
 
 			# Step 0: Solve machAreaRelation at nozzle INLET area to get SUBSONIC mach number, Ma
 			# Step 1: Run nozzle() at isentropic T_t, P_t, rho_t to return m_dot
@@ -321,49 +362,84 @@ for gas_type in gas_types:
 			# Step 8: Add delT to T_static, then calculate new T_t
 
 			# Step 1:
-			P_star, T_star, rho_star, Re_star, v_star, P_exit, T_exit, rho_exit, M_exit, v_exit, c_exit, m_dot, F, CF, flow_regime, area_ratio_at_shock, F_mdotv, F_pdiff = nozzle(k, R, M_crit_sub, M_crit_sup, list_of_P_ts[-1], list_of_T_ts[-1], list_of_rho_ts[-1], P_amb, d_star, expansion_ratio, half_angle, gas_type, visc_func)
+			if i == 0:
+				P_star, T_star, rho_star, Re_star, M_star, v_star, P_exit, T_exit, rho_exit, M_exit, v_exit, c_exit, m_dot, F, CF, flow_regime, area_ratio_at_shock, F_mdotv, F_pdiff = nozzle(k, R, M_crit_sub, M_crit_sup, P_t_init, T_t_init, rho_t_init, P_amb, d_star, expansion_ratio, half_angle, gas_type, visc_func, r_from_PT_gas_func)
+				list_of_mdots.append(m_dot*1000)
+
 			# Step 2:
-			T_upstream = list_of_T_ts[-1]/Z_func(M_sub_upstream)
-			P_upstream = list_of_P_ts[-1]/(Z_func(M_sub_upstream)**W)
-			mu_upstream = visc_func(P_upstream, T_upstream)[0] / 1000000									# Convert from uPa-s to Pa-s (equivalent to kg/m-s), and pull value out of resultant array
+			T_upstream = T_t_plenum[-1]/Z_func(M_sub_upstream)
+			P_upstream = P_t_plenum[-1]/(Z_func(M_sub_upstream)**W)
+			visc_upstream.append(visc_func(P_upstream, T_upstream)[0] / 1000000)									# Convert from uPa-s to Pa-s (equivalent to kg/m-s), and pull value out of resultant array
+			
 			# Step 3:
-			Re_upstream = m_dot*d_upstream/(A_upstream*mu_upstream)
+			Re_upstream.append((list_of_mdots[-1]/1000)*d_upstream/(A_upstream*visc_upstream[-1]))
+			
 			# Step 4:
 			f = 0.07																						# Darcy friction factor. Just an estimate from Moody chart based on brass or steel or something similar.
-			f_alt = (0.79*np.log(Re_upstream)-1.64)**-2
+			# f_alt = (0.79*np.log(Re_upstream[-1])-1.64)**-2												# This stays very low...like, between 0.023 and 0.035
+
 			cp_upstream = cp_func(P_upstream, T_upstream)[0] * 1000											# Convert from J/g-K to J/kg-K
-			ktc_upstream = ktc_func(P_upstream,  np.average([T_wall, T_upstream]))[0]						# Thermal conductivity, W/m-K. This value is typically evaluated at the average of the wall temperature and fluid temperature
-			# ktc_upstream_alt = ktc_func(P_upstream,  T_upstream)[0]
-			Pr_upstream = mu_upstream * cp_upstream / ktc_upstream											# Calculate Prandtl number
-			# Nu_upstream = (f/8)*(Re_upstream - 1000)*Pr_upstream / ( 1 + 12.7*np.sqrt(f/8)*(Pr_upstream**(2/3) - 1) )				# Gnielinsky correlation
-			Nu_upstream_alt = (f_alt/8)*(Re_upstream - 1000)*Pr_upstream / ( 1 + 12.7*np.sqrt(f_alt/8)*(Pr_upstream**(2/3) - 1) )
+			ktc_upstream = ktc_func(P_upstream,  np.average([T_wall[-1], T_upstream]))[0]					# Thermal conductivity, W/m-K. This value is typically evaluated at the average of the wall temperature and fluid temperature
+			Pr_upstream.append(visc_upstream[-1] * cp_upstream / ktc_upstream)								# Calculate Prandtl number, though this stays almost entirely between 0.784 and 0.77, so maybe just used a fixed value...say, 0.78?
+
+			if Re_upstream[-1] >= 3000:
+				Nu_upstream.append( nusseltGnielinski(Re_upstream[-1], Pr_upstream[-1], f) )
+				Nu_last = Nu_upstream[-1]
+				m_dot_last = m_dot
+			else:
+				Nu_upstream.append(m_dot*(Nu_last/m_dot_last))
+				# Nu_upstream.append(4.36)
+
 			# Step 5:
-			htc_upstream = Nu_upstream_alt * ktc_upstream / L_upstream										# Heat transfer coefficient, W/m^2-K
-			# htc_upstream_alt = 0.023 * (ktc_upstream_alt / d_upstream) * (m_dot*d_upstream/(A_upstream*mu_upstream))**0.8 * (mu_upstream*cp_upstream/ktc_upstream_alt)**0.4		# Dittus-Boelter equation
+			htc_upstream = Nu_upstream[-1] * ktc_upstream / L_upstream										# Heat transfer coefficient, W/m^2-K
+			
 			# Step 6:
-			Q_dot_upstream = htc_upstream * (np.pi*d_upstream*L_upstream) * (T_wall - T_upstream)			# Heat rate, W (J/s)
-			delh_upstream = Q_dot_upstream / m_dot															# Change in specific enthalpy, J/kg
-			delT_wall = -Q_dot_upstream*time_step/m_brass*cp_brass
-			T_wall += delT_wall
+			Q_dot_upstream = htc_upstream * (np.pi*d_upstream*L_upstream) * (T_wall[-1] - T_upstream)		# Heat rate, W (J/s)
+			delh_upstream = Q_dot_upstream / (list_of_mdots[-1]/1000)										# Change in specific enthalpy, J/kg
+			
 			# Step 7:
-			delT_upstream = delh_upstream / cp_upstream
+			delT_through_valve = delh_upstream / cp_upstream
+			delT_wall = Q_dot_upstream*time_step / (m_brass*cp_brass)
+			
 			# Step 8:
-			T_upstream = T_upstream + delT_upstream
-			list_of_T_ts[-1] = T_upstream * Z_func(M_sub_upstream)
-			list_of_rho_ts[-1] = list_of_P_ts[-1] / (R * list_of_T_ts[-1])
+			T_inlet.append(T_upstream + delT_through_valve)
+			T_wall.append(T_wall[-1] - delT_wall)
 
+			x1 = np.array([0.000001, 1])	# List of M to solve for roots over
+			sol2 = opti.fsolve(rayleigh_machTempRelation, x1, args=(M_sub_upstream, T_upstream, T_inlet[-1]), maxfev=100000, full_output=False, xtol=0.000000001)
+			M_inlet.append(np.sqrt(sol2[0]))
 
-		# Separate T_t from T_t_plenum (same with P_t)
+			P_t_inlet.append( P_t_plenum[-1]*((1+k*M_sub_upstream**2)/(1+k*M_inlet[-1]**2))*((Z_func(M_inlet[-1]))/(Z_func(M_sub_upstream)))**W )
+			T_t_inlet.append(T_inlet[-1] * Z_func(M_inlet[-1]))
+			rho_t_inlet.append(r_from_PT_gas_func(P_t_inlet[-1], T_t_inlet[-1])[0]*1000)
+			if i == 0:
+				del(list_of_mdots[0])
+
+		
+		else:
+			P_t_inlet.append(P_t_plenum[-1])
+			T_t_inlet.append(T_t_plenum[-1])
+			rho_t_inlet.append(rho_t_plenum[-1])
+			Re_upstream.append(0)
+			Nu_upstream.append(0)
+			Pr_upstream.append(0)
+			visc_upstream.append(0)	
+			T_inlet.append(0)
+			T_wall.append(0)
+			M_inlet.append(0)
+			
+
 
 
 		# Now go through and calculate nozzle stuff with this new T_t
-		P_star, T_star, rho_star, Re_star, v_star, P_exit, T_exit, rho_exit, M_exit, v_exit, c_exit, m_dot, F, CF, flow_regime, area_ratio_at_shock, F_mdotv, F_pdiff = nozzle(k, R, M_crit_sub, M_crit_sup, list_of_P_ts[-1], list_of_T_ts[-1], list_of_rho_ts[-1], P_amb, d_star, expansion_ratio, half_angle, gas_type, visc_func)
+		P_star, T_star, rho_star, Re_star, M_star, v_star, P_exit, T_exit, rho_exit, M_exit, v_exit, c_exit, m_dot, F, CF, flow_regime, area_ratio_at_shock, F_mdotv, F_pdiff = nozzle(k, R, M_crit_sub, M_crit_sup, P_t_inlet[-1], T_t_inlet[-1], rho_t_inlet[-1], P_amb, d_star, expansion_ratio, half_angle, gas_type, visc_func, r_from_PT_gas_func)
 
 		# Append returned items to their respective lists
 		list_of_P_stars.append(P_star)									# Throat Pressure, Pa
 		list_of_T_stars.append(T_star)									# Throat Temperature, K
 		list_of_rho_stars.append(rho_star)								# Throat Density, kg/m^s
-		list_of_Re_stars.append(Re_star)								# Throat Reynolds Number
+		list_of_Re_stars.append(Re_star)								# Throat Reynolds Number			
+		list_of_M_stars.append(M_star)									# Throat Mach No.
 		list_of_v_stars.append(v_star)									# Throat Velocity, m/s
 
 		list_of_P_exits.append(P_exit)									# Exit Pressure, Pa
@@ -428,54 +504,82 @@ for gas_type in gas_types:
 		## --------------------------------------------------------------------------------
 		# Calculate these properties in preparation for the next loop. Loop will end if the newly calculated pressure drops below the ambient pressure.
 		m_gas.append(m_gas[-1] - m_dot*time_step) 
-		list_of_rho_ts.append(m_gas[-1]/(vol))
-		list_of_mu_ts.append(1/list_of_rho_ts[-1])
+		rho_t_plenum.append(m_gas[-1]/(vol))
+		mu_t_plenum.append(1/rho_t_plenum[-1])
 
-		# From mass and energy balance, and assuming the flow is isentropic (is it? Yes I believe it is. This model assumes it is NOT isentropic across the c.v., but it is isentropic afterwards, hence the "upstream" relations made here).
-		P_upstream = list_of_P_ts[-1]*Z_func(M_sub_upstream)**-W			# Pa
-		T_upstream = list_of_T_ts[-1]*Z_func(M_sub_upstream)**-1			# K
-		h_upstream = h_from_PT_gas_func(P_upstream, T_upstream)[0]*1000		# J/kg
-		v_upstream = M_sub_upstream*np.sqrt(k*R*T_upstream)					# m/s
-		dE_dt = m_dot*(h_upstream + (v_upstream**2)/2)						# J/s
-		delta_E = dE_dt*time_step
 
-		list_of_h_sp.append( ((list_of_h_sp[-1]*m_gas[-2]) - delta_E)/m_gas[-1] )		# This value won't be calculated correctly if you assume an isentropic process in the plenum. This should go down, but it in fact goes up.
-		list_of_u_sp.append( ((list_of_u_sp[-1]*m_gas[-2]) - delta_E)/m_gas[-1] )		
+		if process == 'mass-energy-balance':
+			# From mass and energy balance, and assuming the flow is isentropic (is it? Yes I believe it is. This model assumes it is NOT isentropic across the c.v., but it is isentropic afterwards, hence the "upstream" relations made here).
+			process_label = 'Conservation of Energy'
+			P_upstream = P_t_plenum[-1]*Z_func(M_sub_upstream)**-W									# Pa
+			T_upstream = T_t_plenum[-1]*Z_func(M_sub_upstream)**-1									# K
+			rho_upstream = rho_t_plenum[-1]*Z_func(M_sub_upstream)**-(W/k)
 
-		P_from_rh = P_from_rh_func(list_of_rho_ts[-1], list_of_h_sp[-1]/1000)[0]*1000000
-		T_from_rh = T_from_rh_func(list_of_rho_ts[-1], list_of_h_sp[-1]/1000)[0]
+			h_upstream = h_from_PT_gas_func(P_upstream, T_upstream)[0]*1000							# J/kg
+			v_upstream = M_sub_upstream*np.sqrt(k*R*T_upstream)										# m/s
 
-		list_of_P_ts.append(P_from_rh)
-		list_of_T_ts.append(T_from_rh)
+			# dE_dt = m_dot*(h_upstream + (v_upstream**2)/2)										# J/s
+			dE_dt = m_dot*(h_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000)				# J/s, what if we did this instead? Basically assume that the enthalpy is the same for the gas leaving the volume...?
+			delta_E = dE_dt*time_step																
 
-		# I'd like another function to determine the phase based on (u,v)
-		# I'd like a third function to determine quality based on the aforementioned parameters.
+			u_sp_plenum.append( ((u_sp_plenum[-1]*m_gas[-2]) - delta_E)/m_gas[-1] )
+			
+			P_from_ru = P_from_ru_func(rho_t_plenum[-1], u_sp_plenum[-1]/1000)[0]*1000000
+			T_from_ru = T_from_ru_func(rho_t_plenum[-1], u_sp_plenum[-1]/1000)[0]
 
-		# Isothermal process in plenum
-		# list_of_T_ts.append(T_t_init)
+			P_t_plenum.append(P_from_ru)
+			T_t_plenum.append(T_from_ru)
 
-		# Isentropic process in plenum
-		# list_of_P_ts.append( list_of_P_ts[-1]*(list_of_rho_ts[-1]/list_of_rho_ts[-2])**k )
-		# list_of_T_ts.append( list_of_T_ts[-1]*(list_of_rho_ts[-1]/list_of_rho_ts[-2])**(k-1) )					
+			list_of_P_fg_t.append(fg_pres_from_temp(T_from_ru))		# Track the phase change pressure at given temperature
+			list_of_T_fg_t.append(fg_temp_from_pres(P_from_ru))		# Track the phase change temperature at given pressure
 
-		# Isenthalpic process in plenum
-		# cv = cv_func(list_of_P_ts[-1], list_of_T_ts[-1])[0]*1000		# J/kg-K
-		# list_of_P_ts.append( list_of_P_ts[-1]*(m_gas[-1]/m_gas[-2])**((cv-R)/(cv+R)) )
-		# list_of_T_ts.append( list_of_T_ts[-1]*(m_gas[-1]/m_gas[-2])**(2*R/(cv+R)) )
+			# I'd like a third function to determine quality based on the aforementioned parameters.
+
+		elif process == 'isothermal':
+			# Isothermal process in plenum
+			process_label = 'Isothermal'
+			T_t_plenum.append( T_t_init )
+			P_t_plenum.append( P_from_rT_func(rho_t_plenum[-1], T_t_plenum[-1])[0]*1000000 )
+			u_sp_plenum.append( u_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000 )
+			list_of_h_sp.append( h_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000 )
+
+		elif process == 'isentropic':
+			# Isentropic process in plenum
+			process_label = 'Isentropic'
+			P_t_plenum.append( P_t_plenum[-1]*(rho_t_plenum[-1]/rho_t_plenum[-2])**k )
+			T_t_plenum.append( T_t_plenum[-1]*(rho_t_plenum[-1]/rho_t_plenum[-2])**(k-1) )
+			u_sp_plenum.append( u_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000 )
+			list_of_h_sp.append( h_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000 )
+
+		elif process == 'isenthalpic':
+			# Isenthalpic process in plenum
+			process_label = 'Isenthalpic'
+			list_of_h_sp.append( h_sp_init )
+			P_from_rh = P_from_rh_func(rho_t_plenum[-1], list_of_h_sp[-1]/1000)[0]*1000000
+			T_from_rh = T_from_rh_func(rho_t_plenum[-1], list_of_h_sp[-1]/1000)[0]
+			P_t_plenum.append(P_from_rh)
+			T_t_plenum.append(T_from_rh)
+			u_sp_plenum.append( u_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000 )
+		
+		else:
+			print('No state transition process defined!')
+			break
+
 
 		time.append((i+1)*time_step)  # The first iteration is at t=0, so the first time[] entry will be 0.
 
+
 		# Loop counter to check cutoff condition
 		if i>=2:
-			delta_pres = np.absolute((list_of_P_ts[-2] - list_of_P_ts[-1])/P_t_init)/time_step
+			delta_pres = np.absolute((P_t_plenum[-2] - P_t_plenum[-1])/P_t_init)/time_step
+		print('Time step: ' + str(round(time_step, 6)) + ' sec, P_t: ' + str(round(P_t_plenum[-1]/ 6894.76, 1)) + ' psia, Change in pres: ' + str(round(delta_pres*100, 3)) + '%/sec ' + str(round(time[-1], 4)) + ' sec', end='\r', flush=True)
+		iter.append(i)
 		i+=1
-		print('Time step: ' + str(round(time_step, 6)) + ' sec, P_t: ' + str(round(list_of_P_ts[-1]/ 6894.76, 1)) + ' psia, Change in pres: ' + str(round(delta_pres*100, 3)) + '%/sec ' + str(round(time[-1], 4)) + ' sec', end='\r', flush=True)
-
 	print('\n')
 
 	# By the nature of this loop, anything that has an init value will end up with one extra element in its list
 	# So we must manually remove the last element once all is said and done in order to make all the array lengths the same
-	del m_gas[-1], list_of_rho_ts[-1], list_of_T_ts[-1], list_of_P_ts[-1], time[-1]
+	del m_gas[-1], rho_t_plenum[-1], T_t_plenum[-1], P_t_plenum[-1], time[-1]
 
 
 
@@ -504,17 +608,30 @@ for gas_type in gas_types:
 	all_parameters = all_parameters.append(single_sim_params)
 
 	current_data = pd.DataFrame(zip(time,
-									list_of_P_ts, 
-									list_of_T_ts, 
-									list_of_rho_ts,
-									list_of_mu_ts,
-									list_of_h_sp,
-									list_of_u_sp,
+									iter,
+									P_t_plenum, 
+									T_t_plenum, 
+									rho_t_plenum,
+									mu_t_plenum,
+									# list_of_h_sp,
+									u_sp_plenum,
+
+									Re_upstream,
+									Nu_upstream,
+									Pr_upstream,
+									visc_upstream,
+
+									P_t_inlet, 
+									T_t_inlet,
+									T_inlet,
+									T_wall,
+									M_inlet,
 
 									list_of_P_stars, 
 									list_of_T_stars, 
 									list_of_rho_stars, 
 									list_of_Re_stars,
+									list_of_M_stars,
 									list_of_v_stars,
 
 									list_of_P_exits, 
@@ -537,20 +654,35 @@ for gas_type in gas_types:
 									list_of_flow_regimes,
 									list_of_area_ratios_at_shock,
 
+									list_of_P_fg_t,
+									list_of_T_fg_t,
 									list_of_P_fg_exit,
 									list_of_T_fg_exit),
 						columns = [	'time',
+									'iter',
 									'P_t',
 									'T_t',
 									'rho_t',
 									'mu_t',
-									'h_sp',
+									# 'h_sp',
 									'u_sp',
+
+									'Re_up',
+									'Nu_up',
+									'Pr_up',
+									'visc_up',
+
+									'P_t_in',
+									'T_t_in',
+									'T_in',
+									'T_wall',
+									'M_in',
 
 									'P_star',
 									'T_star',
 									'rho_star',
 									'Re_star',
+									'M_star',
 									'v_star',
 
 									'P_exit',
@@ -573,6 +705,8 @@ for gas_type in gas_types:
 									'flow regimes',
 									'area ratios at shock',
 									
+									'P_fg_t',
+									'T_fg_t',
 									'P_fg_exit',
 									'T_fg_exit'])
 	current_data['gas_type'] = gas_type
@@ -595,7 +729,7 @@ for gas_type in gas_types:
 	ax.plot(sim_flow['T_t'][0], sim_flow['P_t'][0], 'o', fillstyle='none', label='Start')
 	ax.plot(sim_flow['T_t'][-1:], sim_flow['P_t'][-1:], 'x', label='Finish')
 	
-	ax.set_title(r'{} Phase Diagram and Corresponding Plenum P-T Path'.format(gas_label))
+	ax.set_title(r'{} Phase Diagram and Plenum P-T Path ({})'.format(gas_label, process_label))
 	ax.set_xlabel(r'Temperature, $K$')
 	ax.set_ylabel(r'Pressure, $Pa$')
 	ax.set(yscale="log")
@@ -629,21 +763,33 @@ all_parameters = all_parameters.set_index('gas_type')
 ## ==================================================================================
 # ---- Plot 2x3 [Thrust, Impulse, ISP, Re, Ma, Density] all vs. Inlet + Throat + Exit Pressure
 linewidth = 2
-fontsize = 12
+fontsize = 10
 
 data = 	{ 
-			'P_t': 				all_data['P_t'],
-			'T_t': 				all_data['T_t'],
-			'rho_t':			all_data['rho_t'],
+			# 'P_t': 				all_data['P_t'],
+			# 'T_t': 				all_data['T_t'],
+			# 'rho_t':			all_data['rho_t'],
 			# 'mu_t':				all_data['mu_t'],
-			'h_sp':				all_data['h_sp'],
+			# 'h_sp':				all_data['h_sp'],
 			# 'u_sp':				all_data['u_sp'],
+
+			'Re_up':			all_data['Re_up'],
+			'Nu_up':			all_data['Nu_up'],
+			'Pr_up':			all_data['Pr_up'],
+			# 'visc_up':			all_data['visc_up'],
+
+			# 'P_t_in': 			all_data['P_t_in'],
+			'T_t_in': 			all_data['T_t_in'],
+			# 'T_in': 			all_data['T_in'],
+			'T_wall':			all_data['T_wall'],
+			# 'M_in':				all_data['M_in'],
 
 			# 'P_star': 		all_data['P_star'],
 			# 'T_star': 		all_data['T_star'],
 			# 'rho_star': 		all_data['rho_star'],
 			# 'Re_star': 		all_data['Re_star'],
-			# 'v_star': 		all_data['v_star'],
+			# 'M_star': 			all_data['M_star'],
+			# 'v_star': 			all_data['v_star'],
 
 			# 'P_exit': 		all_data['P_exit'],
 			# 'T_exit': 		all_data['T_exit'],
@@ -664,22 +810,36 @@ data = 	{
 			# 'ISP': 			all_data['ISP'],
 			# 'ARs at shock':	all_data['area ratios at shock']
 
+			# 'P_fg_exit':		all_data['P_fg_t'],
+			# 'T_fg_exit':		all_data['T_fg_t'],
 			# 'P_fg_exit':		all_data['P_fg_exit'],
-			# 'T_fg_exit':		all_data['T_fg_exit']
+			# 'T_fg_exit':		all_data['T_fg_exit'],
 			  }
 
 figname = { 
-			'P_t': 				'Total Pressure',
-			'T_t': 				'Total Temperature', 							
-			'rho_t': 			'Total Density',
-			'mu_t': 			'Total Specific Volume',
+			'P_t': 				'Plenum Total Pressure',
+			'T_t': 				'Plenum Total Temperature', 							
+			'rho_t': 			'Plenum Total Density',
+			'mu_t': 			'Plenum Total Specific Volume',
 			'h_sp':				'Specific Enthalpy',
 			'u_sp':				'Specific Internal Energy',
+
+			'Re_up':			'Upstream Reynolds No.',
+			'Nu_up':			'Upstream Nusselt No.',
+			'Pr_up':			'Upstream Prandtl No.',
+			'visc_up':			'Upstream Viscosity',
+
+			'P_t_in':			'Inlet Total Pressure',
+			'T_t_in':			'Inlet Total Temperature', 
+			'T_in':				'Inlet Static Temperature', 
+			'T_wall':			'Wall Temperature',
+			'M_in':				'Inlet Mach No.',						
 
 			'P_star': 			'Throat Pressure',
 			'T_star': 			'Throat Temperature',
 			'rho_star': 		'Throat Density', 		
 			'Re_star': 			'Throat Reynold\'s No.',
+			'M_star': 			'Throat Mach No.',
 			'v_star': 			'Throat Velocity',
 
 			'P_exit': 			'Exit Pressure',
@@ -701,6 +861,8 @@ figname = {
 			'ISP': 				'$I_{SP}$',
 			'ARs at shock':		'Area Ratio at Shock',
 
+			'P_fg_t':			'Saturated Vapor Pressure at Current',
+			'T_fg_t':			'Saturated Vapor Temperature at Current',
 			'P_fg_exit':		'Saturated Vapor Pressure at Exit',
 			'T_fg_exit':		'Saturated Vapor Temperature at Exit'
 		  }
@@ -713,10 +875,22 @@ times = {
 			'h_sp':				all_data['time'],
 			'u_sp':				all_data['time'],
 
+			'Re_up':			all_data['time'],
+			'Nu_up':			all_data['time'],
+			'Pr_up':			all_data['time'],
+			'visc_up':			all_data['time'],
+
+			'P_t_in':			all_data['time'],
+			'T_t_in':			all_data['time'],
+			'T_in':				all_data['time'],
+			'T_wall':			all_data['time'],
+			'M_in':				all_data['time'],
+
 			'P_star': 			all_data['time'],
 			'T_star': 			all_data['time'],
 			'rho_star': 		all_data['time'],
 			'Re_star': 			all_data['time'],
+			'M_star': 			all_data['time'],
 			'v_star': 			all_data['time'],
 
 			'P_exit': 			all_data['time'],
@@ -738,22 +912,36 @@ times = {
 			'ISP': 				all_data['time'],
 			'ARs at shock': 	all_data['time'],
 
+			'P_fg_t':	 	all_data['time'],
+			'T_fg_t':	 	all_data['time'],
 			'P_fg_exit': 	all_data['time'],
 			'T_fg_exit': 	all_data['time']
 		}
 
 ylabels = {
-			'P_t': 				'Total Pressure, $Pa$',
-			'T_t': 				'Total Temperature, $K$', 						
-			'rho_t': 			'Total Density, $kg/m^3$',
-			'mu_t': 			'Total Specific Volume, $m^3/kg$',
+			'P_t': 				'Plenum Total Pres, $Pa$',
+			'T_t': 				'Plenum Total Temp, $K$', 						
+			'rho_t': 			'Plenum Total Dens, $kg/m^3$',
+			'mu_t': 			'Plenum Total Sp. Vol, $m^3/kg$',
 			'h_sp':				'Specific Enthalpy, $kJ/kg$',
 			'u_sp':				'Specific Internal Energy, $kJ/kg$',
+
+			'Re_up':			'Upstream Reynolds No.',
+			'Nu_up':			'Upstream Nusselt No.',
+			'Pr_up':			'Upstream Prandtl No.',
+			'visc_up':			'Upstream Viscosity, $Pa-s$',
+
+			'P_t_in':			'Inlet Total Pres, $Pa$',
+			'T_t_in':			'Inlet Total Temp, $K$', 						
+			'T_in':				'Inlet Static Temp, $K$', 						
+			'T_wall':			'Wall Temp, $K$',
+			'M_in':				'Inlet Mach No.',
 
 			'P_star': 			'Throat Pressure, $Pa$',
 			'T_star': 			'Throat Temperature, $K$',
 			'rho_star': 		'Throat Density, $kg/m^3$', 		
 			'Re_star': 			'Throat Reynold\'s No.',
+			'M_star': 			'Throat Mach No.', 				
 			'v_star': 			'Throat Velocity, $m/s$', 				
 
 			'P_exit': 			'Exit Pressure, $Pa$',
@@ -775,6 +963,8 @@ ylabels = {
 			'ISP': 				'$I_{SP}$, $s$', 		
 			'ARs at shock':	   r'Area Ratio, $\lambda$',
 
+			'P_fg_t':			'Saturated Pressure, $Pa$',
+			'T_fg_t':			'Saturated Temperature, $K$',
 			'P_fg_exit':		'Saturated Pressure, $Pa$',
 			'T_fg_exit':		'Saturated Temperature, $K$',
 		   }
@@ -793,22 +983,22 @@ class ScalarFormatterForceFormat(mpl.ticker.ScalarFormatter):
 # Let's see if we can plot exit pres & sat pres at exit on same plot, and also temp on another
 
 for gas in gas_types:
-	fig_sat, axs = plt.subplots(4,1, figsize=figsize, dpi=dpi, sharex=True)
-	fig_sat.suptitle('Exit Pressure & Temperature w/ Saturation Data', y=0.98)
+	fig_sat, axs = plt.subplots(5,1, figsize=figsize, dpi=dpi, sharex=True)
+	fig_sat.suptitle('Plenum Pressure & Temperature w/ Saturation Data', y=0.98)
 	axs[0].set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(all_parameters.loc[gas]['gas_label'], all_parameters.loc[gas]['T_t_init'], all_parameters.loc[gas]['vol']*10**6, all_parameters.loc[gas]['d_star']*1000, all_parameters.loc[gas]['expansion_ratio']), fontsize=9)
 	fig_sat.canvas.set_window_title('Saturated Pressure Stuff')
 
 	for i, key in enumerate(data):
-		sns.lineplot(ax=axs[i], x='time', y=key, palette='colorblind', data=all_data[all_data['gas_type']==gas], hue='flow regimes', legend='full')
+		sns.lineplot(ax=axs[i], x='iter', y=key, palette='colorblind', data=all_data[all_data['gas_type']==gas], hue='flow regimes', legend='full')
 
-		if key=='P_exit':
-			# sns.lineplot(ax=axs[i], x=times['P_fg_exit'], y=all_data['P_fg_exit'], palette='colorblind', data=all_data[all_data['gas_type']==gas], legend='full')
-			axs[i].plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas]['P_fg_exit'], color='red', label='Phase Change Pres at Exit Temp')
-			axs[i].plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas]['P_trip'], color='green', linestyle='--', label='Triple Point')
-		if key=='T_exit':
-			# sns.lineplot(ax=axs[i], x=times['T_fg_exit'], y=all_data['T_fg_exit'], palette='colorblind', data=all_data[all_data['gas_type']==gas], legend='full')
-			axs[i].plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas]['T_fg_exit'], color='red', label='Phase Change Temp at Exit Pres')
-			axs[i].plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas]['T_trip'], color='green', linestyle='--', label='Triple Point')
+		if key=='P_t':
+			# sns.lineplot(ax=axs[i], x=times['P_fg_t'], y=all_data['P_fg_t'], palette='colorblind', data=all_data[all_data['gas_type']==gas], legend='full')
+			axs[i].plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas]['P_fg_t'], color='red', label='Phase Change Pres at Plenum Temp')
+			# axs[i].plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas]['P_trip'], color='green', linestyle='--', label='Triple Point')
+		if key=='T_t':
+			# sns.lineplot(ax=axs[i], x=times['T_fg_t'], y=all_data['T_fg_t'], palette='colorblind', data=all_data[all_data['gas_type']==gas], legend='full')
+			axs[i].plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas]['T_fg_t'], color='red', label='Phase Change Temp at Plenum Pres')
+			# axs[i].plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas]['T_trip'], color='green', linestyle='--', label='Triple Point')
 
 		# if key=='P_t':
 		# 	axs[i].plot(all_data[all_data['gas_type']==gas]['time'], [fg_pres_from_temp(x) for x in all_data[all_data['gas_type']==gas]['T_t'].values], color='red', label='Phase Change Pres at Exit Temp')

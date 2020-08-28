@@ -7,7 +7,7 @@ import pandas as pd
 import scipy.optimize as opti
 from scipy.interpolate import interp2d
 
-def nozzle(k, R, M_crit_sub, M_crit_sup, P_t, T_t, rho_t, P_amb, d_star, expansion_ratio, half_angle, gas_type, visc_func):
+def nozzle(k, R, M_crit_sub, M_crit_sup, P_t, T_t, rho_t, P_amb, d_star, expansion_ratio, half_angle, gas_type, visc_func, r_from_PT):
 	# Nozzle Geometry
 	A_star = np.pi*(d_star**2)/4  					# Throat area
 	A_exit = A_star*expansion_ratio  				# Exit area
@@ -34,6 +34,8 @@ def nozzle(k, R, M_crit_sub, M_crit_sup, P_t, T_t, rho_t, P_amb, d_star, expansi
 		f = (1 + L*M**2)**(-W)  					# P/P_t, Isentropic Mach-Pressure relation.
 		return f
 
+	# Calculate compression ratio
+	Z = P_t / (rho_t * R * T_t)
 
 
 	## ==================================================================================
@@ -55,12 +57,12 @@ def nozzle(k, R, M_crit_sub, M_crit_sup, P_t, T_t, rho_t, P_amb, d_star, expansi
 		c_exit = np.sqrt(k*R*T_exit)  				# Exit speed of sound (m/s)
 		v_exit = M_exit*c_exit  					# Exit velocity (m/s)
 		rho_exit = (P_exit*(rho_t**k)/P_t)**(1/k) 	# Units of kg/m^3
-		m_dot = rho_exit*A_exit*v_exit  			# Units of kg/s
+		m_dot = Z*rho_exit*A_exit*v_exit  			# Units of kg/s
 
 		def objective2(X):
-			f = m_dot - (A_star*P_t/math.sqrt(T_t)) * math.sqrt(k/R) * X * (1 + L*X**2)**(-Q/2)
+			f = m_dot - (A_star*P_t/math.sqrt(T_t)) * math.sqrt(k/R) * np.sqrt(X) * (1 + L*X)**(-Q/2)
 			return f
-		x0 = np.array([0.3])
+		x0 = np.array([0.00001])
 		sol0 = opti.fsolve(objective2, x0, maxfev=100000, full_output=False, xtol=0.000000001)
 		M_star = sol0[0]
 		flow_is_supersonic_flag = False
@@ -141,9 +143,14 @@ def nozzle(k, R, M_crit_sub, M_crit_sup, P_t, T_t, rho_t, P_amb, d_star, expansi
 	## ----------------------------------------------------------------------------------
 	# Case 5: No flow at all (Catch-all)
 	else:
+		P_exit = P_amb
 		M_star = 0
 		M_exit = 0
-		P_exit = P_amb
+		m_dot = 0
+		T_exit = T_t
+		c_exit = np.sqrt(k*R*T_exit)
+		v_exit = 0
+		rho_exit = rho_t
 		flow_is_supersonic_flag = False
 		flow_regime = 'no flow'
 
@@ -151,28 +158,33 @@ def nozzle(k, R, M_crit_sub, M_crit_sup, P_t, T_t, rho_t, P_amb, d_star, expansi
 
 
 	## ==================================================================================
-	## ---- SOLVE FOR THROAT CONDITIONS ---------------------------------------------------
+	## ---- SOLVE FOR THROAT CONDITIONS -------------------------------------------------
 	## ==================================================================================
 	T_star = T_t*(2/(k+1))							# Throat Static Temperature, K
 	P_star = P_t*(2/(k+1))**(k/(k-1)) 				# Throat Static Pressure, Pa
-	rho_star = rho_t*(2/(k+1))**(1/(k-1)) 			# kg/m^3
+	rho_star = rho_t*(2/(k+1))**(1/(k-1)) 			# kg/m^3, P_t, T_t, rho_t all supplied from input
+
 	c_star = np.sqrt(k*R*T_star) 					# m/s
 	v_star = M_star*c_star							# m/s
-	m_dot = rho_star*A_star*v_star					# kg/s
-	# mu_star = (0.0492*T_star + 0.3276)*(10**-6) 	# Pa-s, Emperical formula derived from NIST data. Viscosity is highly invariable with pressure between 0.1 and 0.8 MPa, and only slightly variable with temperature, and linearly at that. Use 13 uPa-s in a pinch.
-	mu_star = visc_func(P_star, T_star)[0]
-	Re_star = rho_star*v_star*d_star/mu_star
+	visc_star = visc_func(P_star, T_star)[0] / 1000000
+	Re_star = rho_star*v_star*d_star/visc_star
+
+	if flow_is_supersonic_flag:
+		m_dot = Z*rho_star*A_star*v_star					# kg/s
+		# m_dot = (A_star*P_t/math.sqrt(T_t)) * math.sqrt(k/R) * M_star * (Z_func(M_star))**(-Q/2)
+
+		## ==================================================================================
+		## ---- SOLVE FOR EXIT CONDITIONS ---------------------------------------------------
+		## ==================================================================================
+		T_exit = T_t/Z_func(M_exit)  				# Exit Static Temperature (K)
+		c_exit = np.sqrt(k*R*T_exit)  				# Exit speed of sound (m/s)
+		v_exit = M_exit*c_exit  					# Exit velocity (m/s)
+		rho_exit = (P_exit*(rho_t**k)/P_t)**(1/k) 	# Units of kg/m^3
+
+	else:
+		pass
 
 
-
-
-	## ==================================================================================
-	## ---- SOLVE FOR EXIT CONDITIONS ---------------------------------------------------
-	## ==================================================================================
-	T_exit = T_t/Z_func(M_exit)  				# Exit Static Temperature (K)
-	c_exit = np.sqrt(k*R*T_exit)  				# Exit speed of sound (m/s)
-	v_exit = M_exit*c_exit  					# Exit velocity (m/s)
-	rho_exit = (P_exit*(rho_t**k)/P_t)**(1/k) 	# Units of kg/m^3
 
 
 
@@ -185,4 +197,4 @@ def nozzle(k, R, M_crit_sub, M_crit_sup, P_t, T_t, rho_t, P_amb, d_star, expansi
 
 
 	# return a whole lot of stuff
-	return P_star, T_star, rho_star, Re_star, v_star, P_exit, T_exit, rho_exit, M_exit, v_exit, c_exit, m_dot, F, CF, flow_regime, area_ratio_at_shock, F_mdotv, F_pdiff
+	return P_star, T_star, rho_star, Re_star, M_star, v_star, P_exit, T_exit, rho_exit, M_exit, v_exit, c_exit, m_dot, F, CF, flow_regime, area_ratio_at_shock, F_mdotv, F_pdiff
