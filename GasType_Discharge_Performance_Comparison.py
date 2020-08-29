@@ -235,6 +235,7 @@ for gas_type in gas_types:
 	list_of_rho_exits = []
 	list_of_thrust_coeffs = []
 	list_of_visc_losses = []
+	thrust_eff = []
 	list_of_F_mdotv = []
 	list_of_F_pdiff = []
 
@@ -486,6 +487,7 @@ for gas_type in gas_types:
 		# Now let's calculate viscous losses
 		# This is my temporary function which is only really valid for CO2 but I'll use it for both for the time being
 		list_of_visc_losses.append(visc_loss_param/np.sqrt(Re_star*np.tan(np.deg2rad(half_angle))))
+		thrust_eff.append(100*(CF-list_of_visc_losses[-1])/CF)
 
 		# Integrate over expansion ratio of nozzle (from 1 to either 1.17 or 30, depending on if CO2 or R134a)
 		# Need Area and Mach number at each point
@@ -519,7 +521,7 @@ for gas_type in gas_types:
 			v_upstream = M_sub_upstream*np.sqrt(k*R*T_upstream)										# m/s
 
 			# dE_dt = m_dot*(h_upstream + (v_upstream**2)/2)										# J/s
-			dE_dt = m_dot*(h_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000)				# J/s, what if we did this instead? Basically assume that the enthalpy is the same for the gas leaving the volume...?
+			dE_dt = m_dot*(h_sp_plenum[-1])				# J/s, what if we did this instead? Basically assume that the enthalpy is the same for the gas leaving the volume...?
 			delta_E = dE_dt*time_step																
 
 			u_sp_plenum.append( ((u_sp_plenum[-1]*m_gas[-2]) - delta_E)/m_gas[-1] )
@@ -529,6 +531,8 @@ for gas_type in gas_types:
 
 			P_t_plenum.append(P_from_ru)
 			T_t_plenum.append(T_from_ru)
+
+			h_sp_plenum.append( h_from_PT_gas_func(P_from_ru, T_from_ru)[0]*1000)					# J/s, calculate new specific enthalpy 
 
 			list_of_P_fg_t.append(fg_pres_from_temp(T_from_ru))		# Track the phase change pressure at given temperature
 			list_of_T_fg_t.append(fg_temp_from_pres(P_from_ru))		# Track the phase change temperature at given pressure
@@ -613,7 +617,7 @@ for gas_type in gas_types:
 									T_t_plenum, 
 									rho_t_plenum,
 									mu_t_plenum,
-									# list_of_h_sp,
+									h_sp_plenum,
 									u_sp_plenum,
 
 									Re_upstream,
@@ -648,6 +652,7 @@ for gas_type in gas_types:
 									list_of_thrusts,
 									list_of_thrust_coeffs,
 									list_of_visc_losses,
+									thrust_eff,
 									list_of_average_thrusts,
 									cumulative_impulse,
 									ISP,
@@ -664,7 +669,7 @@ for gas_type in gas_types:
 									'T_t',
 									'rho_t',
 									'mu_t',
-									# 'h_sp',
+									'h_sp',
 									'u_sp',
 
 									'Re_up',
@@ -699,6 +704,7 @@ for gas_type in gas_types:
 									'thrust',
 									'thrust_coeff',
 									'visc_losses',
+									'thrust_eff',
 									'avg_thrust',
 									'cum_impulse',
 									'ISP',
@@ -755,6 +761,55 @@ for gas_type in gas_types:
 	plt.show()
 
 
+	# --------------------------------------------------------------------------------
+	# Create a plot of u vs. rho to begin identifying phase transitions
+	fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
+	# Plot phase data
+	u_fg_gas = [u_from_PT_gas_func(x,y)[0] for x,y in all_data[all_data['gas_type']==gas_type][['P_fg_t', 'T_fg_t']].values]
+	r_fg_gas = [r_from_PT_gas_func(x,y)[0]*1000 for x,y in all_data[all_data['gas_type']==gas_type][['P_fg_t', 'T_fg_t']].values]
+	u_r_phase_data = pd.DataFrame({'Internal Energy (kJ/kg)': u_fg_gas, 'Density (kg/m^3)': r_fg_gas})
+	# sns.scatterplot(ax=ax, x='Temperature (K)', y='Pressure (Pa)', palette='colorblind', data=phase_data[phase_data['Dataset']=='NIST Data'], hue='Dataset', zorder=10)
+	# sns.lineplot(ax=ax, x='Internal Energy (kJ/kg)', y='Density (kg/m^3)', palette='colorblind', data=u_r_phase_data)
+	ax.plot(u_r_phase_data['Internal Energy (kJ/kg)'], u_r_phase_data['Density (kg/m^3)'], label='Phase Change', linestyle='-')
+
+	# Plot h-p path
+	sim_flow = current_data[current_data['flow regimes'].isin(['underexpanded', 'weak shock outside', 'normal shock at exit', 'normal shock in nozzle', 'subsonic'])][['u_sp', 'rho_t']]
+	ax.plot([x/1000 for x in sim_flow['u_sp']], sim_flow['rho_t'], label='Plenum, Total h-r Path', linestyle='--')
+	ax.plot([x/1000 for x in sim_flow['u_sp']][0], sim_flow['rho_t'][0], 'o', fillstyle='none', label='Start')
+	ax.plot([x/1000 for x in sim_flow['u_sp']][-1:], sim_flow['rho_t'][-1:], 'x', label='Finish')
+	
+	ax.set_title(r'Plenum $\rho$-h Path ({})'.format(gas_label, process_label))
+	ax.set_xlabel(r'Internal Energy, $kJ/kg$')
+	ax.set_ylabel(r'Density, $kg/m^3$')
+	# ax.set(yscale="log")
+	if gas_type == 'CO2':
+		ax.set_xlim([360, 430])
+		ax.set_ylim([3, 17])
+
+	# Change tick formatting to make it look nicer
+	ax.xaxis.label.set_size(8)
+	ax.tick_params(axis='x', labelsize=6, pad=0)
+	ax.tick_params(axis='y', labelsize=6, pad=0)
+	ax.yaxis.set_major_formatter(yfmt)
+	ax.yaxis.offsetText.set_fontsize(6)
+	ax.ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
+
+	
+	legend, handles = ax.get_legend_handles_labels()		# Get the legend and hadles so we can modify them
+	del legend[0], legend[-2], handles[0], handles[-2]		# Remove some of the dumb legend stuff that gets added by sns.scatterplot and sns.lineplot
+	legend = legend[-1:] + legend[:-1]						# Move the last element to the beginning
+	handles = handles[-1:] + handles[:-1]					# Move the last handle to the beginning
+	ax.legend(legend, handles, loc='lower right')			# Make a new legend with the modified handles
+
+	plt.show()
+
+
+
+
+
+
+
+
 all_parameters = all_parameters.set_index('gas_type')
 
 
@@ -766,28 +821,28 @@ linewidth = 2
 fontsize = 10
 
 data = 	{ 
-			# 'P_t': 				all_data['P_t'],
-			# 'T_t': 				all_data['T_t'],
+			'P_t': 				all_data['P_t'],
+			'T_t': 				all_data['T_t'],
 			# 'rho_t':			all_data['rho_t'],
 			# 'mu_t':				all_data['mu_t'],
 			# 'h_sp':				all_data['h_sp'],
 			# 'u_sp':				all_data['u_sp'],
 
-			'Re_up':			all_data['Re_up'],
-			'Nu_up':			all_data['Nu_up'],
-			'Pr_up':			all_data['Pr_up'],
+			# 'Re_up':			all_data['Re_up'],
+			# 'Nu_up':			all_data['Nu_up'],
+			# 'Pr_up':			all_data['Pr_up'],
 			# 'visc_up':			all_data['visc_up'],
 
 			# 'P_t_in': 			all_data['P_t_in'],
-			'T_t_in': 			all_data['T_t_in'],
+			# 'T_t_in': 			all_data['T_t_in'],
 			# 'T_in': 			all_data['T_in'],
-			'T_wall':			all_data['T_wall'],
+			# 'T_wall':			all_data['T_wall'],
 			# 'M_in':				all_data['M_in'],
 
 			# 'P_star': 		all_data['P_star'],
 			# 'T_star': 		all_data['T_star'],
 			# 'rho_star': 		all_data['rho_star'],
-			# 'Re_star': 		all_data['Re_star'],
+			'Re_star': 		all_data['Re_star'],
 			# 'M_star': 			all_data['M_star'],
 			# 'v_star': 			all_data['v_star'],
 
@@ -804,7 +859,8 @@ data = 	{
 			# 'F_pdiff': 		all_data['F_pdiff'], 
 			# 'thrust': 		all_data['thrust'],
 			# 'thrust_coeff': 	all_data['thrust_coeff'],
-			# 'visc_losses': 	all_data['visc_loss'],
+			# 'visc_losses': 		all_data['visc_loss'],
+			'thrust_eff': 		all_data['thrust_eff'],
 			# 'avg_thrust': 	all_data['avg_thrust'],
 			# 'cum_impulse': 	all_data['cum_impulse'],
 			# 'ISP': 			all_data['ISP'],
@@ -856,6 +912,7 @@ figname = {
 			'thrust': 			'Instantaneous Thrust', 							
 			'thrust_coeff': 	'Thrust Coefficient',
 			'visc_losses': 		'Viscous Loss Percentage',
+			'thrust_eff':		'Thrust Efficiency',
 			'avg_thrust': 		'Time Average Thrust',
 			'cum_impulse': 		'Net Impulse',
 			'ISP': 				'$I_{SP}$',
@@ -907,6 +964,7 @@ times = {
 			'thrust': 			all_data['time'],
 			'thrust_coeff': 	all_data['time'],
 			'visc_losses': 		all_data['time'],
+			'thrust_eff': 		all_data['time'],
 			'avg_thrust': 		all_data['time'],
 			'cum_impulse': 		all_data['time'],
 			'ISP': 				all_data['time'],
@@ -956,8 +1014,9 @@ ylabels = {
 			'F_mdotv': 			'Thrust from mdot, $mN$', 
 			'F_pdiff': 			'Thrust from pdiff, $mN$', 
 			'thrust': 			'Thrust, $mN$',
-			'thrust_coeff':		'Thrust Coefficient, $C_f$',
-			'visc_losses': 	   r'$\frac{C_f - C_{f_v}}{C_f}$ (%)',
+			'thrust_coeff':	   r'Thrust Coefficient, $C_f$',
+			'visc_losses': 	   r'Viscous Losses, $C_{f_v}$',
+			'thrust_eff': 	   r'Thrust Efficiency, $\%$',
 			'avg_thrust':		'Time Average Thrust, $mN$',
 			'cum_impulse': 		'Impulse, $mN-s$',
 			'ISP': 				'$I_{SP}$, $s$', 		
@@ -983,13 +1042,13 @@ class ScalarFormatterForceFormat(mpl.ticker.ScalarFormatter):
 # Let's see if we can plot exit pres & sat pres at exit on same plot, and also temp on another
 
 for gas in gas_types:
-	fig_sat, axs = plt.subplots(5,1, figsize=figsize, dpi=dpi, sharex=True)
+	fig_sat, axs = plt.subplots(4,1, figsize=figsize, dpi=dpi, sharex=True)
 	fig_sat.suptitle('Plenum Pressure & Temperature w/ Saturation Data', y=0.98)
 	axs[0].set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(all_parameters.loc[gas]['gas_label'], all_parameters.loc[gas]['T_t_init'], all_parameters.loc[gas]['vol']*10**6, all_parameters.loc[gas]['d_star']*1000, all_parameters.loc[gas]['expansion_ratio']), fontsize=9)
 	fig_sat.canvas.set_window_title('Saturated Pressure Stuff')
 
 	for i, key in enumerate(data):
-		sns.lineplot(ax=axs[i], x='iter', y=key, palette='colorblind', data=all_data[all_data['gas_type']==gas], hue='flow regimes', legend='full')
+		sns.lineplot(ax=axs[i], x='time', y=key, palette='colorblind', data=all_data[all_data['gas_type']==gas], hue='flow regimes', legend='full')
 
 		if key=='P_t':
 			# sns.lineplot(ax=axs[i], x=times['P_fg_t'], y=all_data['P_fg_t'], palette='colorblind', data=all_data[all_data['gas_type']==gas], legend='full')

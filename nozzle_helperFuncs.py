@@ -154,114 +154,156 @@ def create_ktc_func(fluid_props):
 
 
 
+
 # --------------------------------------------------------------------------------
-# Create a 2D function to return enthalpy of a fluid at a given (P,T) based on NIST data and using linear interpolation
+# Create a NEW 2D function to return enthalpy of a fluid at a given (P,T) based on NIST data and using linear interpolation
 def create_h_from_PT_gas_func(fluid_props):
 	h_sp_data = pd.DataFrame(columns=['Temperature (K)'])
 	pressures = []		
 	for pres in list(fluid_props.keys()):
 		f = fluid_props[pres][['Temperature (K)', 'Enthalpy (kJ/kg)', 'Phase']].rename(columns={'Enthalpy (kJ/kg)': pres})		# Pull out Temperature, Enthalpy, and Phase data for each Pressure, and rename column to numercial pressure (in MPa)
-		f = f.drop(f.index[f['Phase'] != 'vapor']).drop('Phase', axis=1) 														# Drop all rows that are not pertaining to vapor, then drop the 'Phase' column entirely so we're just left with Viscosity
+		f = f.drop(f.index[f['Phase'] != 'vapor']).drop('Phase', axis=1).dropna() 												# Drop all rows that are not pertaining to vapor, then drop the 'Phase' column entirely so we're just left with enthalpy
 		if not f.empty:
 			h_sp_data = pd.merge(h_sp_data, f, how='outer', on='Temperature (K)')												# Merge on 'Temperature (K)'. Non-overlapping values will have NaNs.
-			h_sp_data = h_sp_data.sort_values('Temperature (K)').reset_index(drop=True)											# Sort by temperature and reset index
-			h_sp_data.interpolate(inplace=True)
-			pressures.append(fluid_props[pres]['Pressure (MPa)'][0]*1E6)														# Interpolate across the non-overlapping values to fill in any NaNs that lie BETWEEN data points.
+			h_sp_data = h_sp_data.sort_values('Temperature (K)').reset_index(drop=True)											# Sort by volume and reset index
+			h_sp_data = h_sp_data.set_index('Temperature (K)').interpolate(method='index', limit_area='inside').reset_index()	# Fill in any missing values that fall between tabulated values
+			pressures.append(fluid_props[pres]['Pressure (MPa)'][f.index[0]]*1E6)												# Interpolate across the non-overlapping values to fill in any NaNs that lie BETWEEN data points.
 		else:
 			pass
-	h_sp_data = h_sp_data.fillna(method='bfill', axis=1)																		# We can't interpolate over NaN's, and it throws a NaN for all the pressures where there is no viscosity data (or when a phase change occurs), so...just backfill them for the time being
-	h_sp_data = h_sp_data.dropna(axis=0, how='any', thresh=2)																	# Drop any rows that are completely NaN'ed out
-	h_sp_data = h_sp_data.dropna(axis=1, how='all')																				# Drop the remaining all-Nan columns
-	h_from_PT_gas_func = interp2d(pressures[:len(h_sp_data.columns)-1], h_sp_data['Temperature (K)'].values, h_sp_data.iloc[:,1:].values)
-	return h_from_PT_gas_func
+
+	start = 150
+	stop = h_sp_data['Temperature (K)'].iloc[-1]
+	step = h_sp_data['Temperature (K)'].diff().median()
+	extrap_range = np.arange(start, stop, step)																					# Temperature range over which to extrapolate (pressure range is already okay, no need to extrapolate below 100 KPa)
+
+	h_sp_data_new = pd.DataFrame(columns=['Temperature (K)'])
+	for pres in h_sp_data.columns[1:]:
+		h_sp_data_slice = h_sp_data[['Temperature (K)', pres]].dropna()															# Get the values over the range you wish to use as the basis for your interpolation (and drop NaNs)
+		if not h_sp_data_slice.empty:
+			f = interp1d(h_sp_data_slice['Temperature (K)'], h_sp_data_slice[pres].apply(np.log), fill_value='extrapolate')			# Make your interpolation function, first applying np.log() to all the values to make the extrapolation function from
+			h_sp_data_fill = pd.DataFrame({'Temperature (K)': extrap_range, pres:np.exp(f(extrap_range))})							# Extrapolate over the range using said interp1d function
+			h_sp_data_new = h_sp_data_new.merge(h_sp_data_fill, how='outer', on='Temperature (K)')
+	h_sp_from_PT = interp2d(pressures[:len(h_sp_data_new.columns)-1], h_sp_data_new['Temperature (K)'].values, h_sp_data_new.iloc[:,1:].values)
+	return h_sp_from_PT
+
+
+
+
+# --------------------------------------------------------------------------------
+# Create a NEW 2D function to return internal energy of a fluid at a given (P,T) based on NIST data and using linear interpolation
+def create_u_from_PT_gas_func(fluid_props):
+	u_sp_data = pd.DataFrame(columns=['Temperature (K)'])
+	pressures = []		
+	for pres in list(fluid_props.keys()):
+		f = fluid_props[pres][['Temperature (K)', 'Internal Energy (kJ/kg)', 'Phase']].rename(columns={'Internal Energy (kJ/kg)': pres})		# Pull out Temperature, Internal Energy, and Phase data for each Pressure, and rename column to numercial pressure (in MPa)
+		f = f.drop(f.index[f['Phase'] != 'vapor']).drop('Phase', axis=1).dropna() 												# Drop all rows that are not pertaining to vapor, then drop the 'Phase' column entirely so we're just left with enthalpy
+		if not f.empty:
+			u_sp_data = pd.merge(u_sp_data, f, how='outer', on='Temperature (K)')												# Merge on 'Temperature (K)'. Non-overlapping values will have NaNs.
+			u_sp_data = u_sp_data.sort_values('Temperature (K)').reset_index(drop=True)											# Sort by volume and reset index
+			u_sp_data = u_sp_data.set_index('Temperature (K)').interpolate(method='index', limit_area='inside').reset_index()	# Fill in any missing values that fall between tabulated values
+			pressures.append(fluid_props[pres]['Pressure (MPa)'][f.index[0]]*1E6)												# Interpolate across the non-overlapping values to fill in any NaNs that lie BETWEEN data points.
+		else:
+			pass
+
+	start = 150
+	stop = u_sp_data['Temperature (K)'].iloc[-1]
+	step = u_sp_data['Temperature (K)'].diff().median()
+	extrap_range = np.arange(start, stop, step)																					# Temperature range over which to extrapolate (pressure range is already okay, no need to extrapolate below 100 KPa)
+
+	u_sp_data_new = pd.DataFrame(columns=['Temperature (K)'])
+	for pres in u_sp_data.columns[1:]:
+		u_sp_data_slice = u_sp_data[['Temperature (K)', pres]].dropna()															# Get the values over the range you wish to use as the basis for your interpolation (and drop NaNs)
+		if not u_sp_data_slice.empty:
+			f = interp1d(u_sp_data_slice['Temperature (K)'], u_sp_data_slice[pres].apply(np.log), fill_value='extrapolate')			# Make your interpolation function, first applying np.log() to all the values to make the extrapolation function from
+			u_sp_data_fill = pd.DataFrame({'Temperature (K)': extrap_range, pres:np.exp(f(extrap_range))})							# Extrapolate over the range using said interp1d function
+			u_sp_data_new = u_sp_data_new.merge(u_sp_data_fill, how='outer', on='Temperature (K)')
+	u_sp_from_PT = interp2d(pressures[:len(u_sp_data_new.columns)-1], u_sp_data_new['Temperature (K)'].values, u_sp_data_new.iloc[:,1:].values)
+	return u_sp_from_PT
+
 
 
 
 # --------------------------------------------------------------------------------
 # Create a 2D function to return internal energy of a fluid at a given (P,T) based on NIST data and using linear interpolation
-def create_u_from_PT_gas_func(fluid_props):
-	u_sp_data = pd.DataFrame(columns=['Temperature (K)'])
+# def create_u_from_PT_gas_func(fluid_props):
+# 	u_sp_data = pd.DataFrame(columns=['Temperature (K)'])
+# 	pressures = []		
+# 	for pres in list(fluid_props.keys()):
+# 		f = fluid_props[pres][['Temperature (K)', 'Internal Energy (kJ/kg)', 'Phase']].rename(columns={'Internal Energy (kJ/kg)': pres})		# Pull out Temperature, Enthalpy, and Phase data for each Pressure, and rename column to numercial pressure (in MPa)
+# 		f = f.drop(f.index[f['Phase'] != 'vapor']).drop('Phase', axis=1) 														# Drop all rows that are not pertaining to vapor, then drop the 'Phase' column entirely so we're just left with Viscosity
+# 		if not f.empty:
+# 			u_sp_data = pd.merge(u_sp_data, f, how='outer', on='Temperature (K)')												# Merge on 'Temperature (K)'. Non-overlapping values will have NaNs.
+# 			u_sp_data = u_sp_data.sort_values('Temperature (K)').reset_index(drop=True)											# Sort by temperature and reset index
+# 			u_sp_data.interpolate(inplace=True)
+# 			pressures.append(fluid_props[pres]['Pressure (MPa)'][0]*1E6)														# Interpolate across the non-overlapping values to fill in any NaNs that lie BETWEEN data points.
+# 		else:
+# 			pass
+# 	u_sp_data = u_sp_data.fillna(method='bfill', axis=1)																		# We can't interpolate over NaN's, and it throws a NaN for all the pressures where there is no viscosity data (or when a phase change occurs), so...just backfill them for the time being
+# 	u_sp_data = u_sp_data.dropna(axis=0, how='any', thresh=2)																	# Drop any rows that are completely NaN'ed out
+# 	u_sp_data = u_sp_data.dropna(axis=1, how='all')																				# Drop the remaining all-Nan columns
+# 	u_from_PT_gas_func = interp2d(pressures[:len(u_sp_data.columns)-1], u_sp_data['Temperature (K)'].values, u_sp_data.iloc[:,1:].values)
+# 	return u_from_PT_gas_func
+
+
+
+
+# --------------------------------------------------------------------------------
+# Create a NEW 2D function to return density of a fluid at a given (P,T) based on NIST data and using linear interpolation
+def create_r_from_PT_gas_func(fluid_props):
+	r_data = pd.DataFrame(columns=['Temperature (K)'])
 	pressures = []		
 	for pres in list(fluid_props.keys()):
-		f = fluid_props[pres][['Temperature (K)', 'Internal Energy (kJ/kg)', 'Phase']].rename(columns={'Internal Energy (kJ/kg)': pres})		# Pull out Temperature, Enthalpy, and Phase data for each Pressure, and rename column to numercial pressure (in MPa)
-		f = f.drop(f.index[f['Phase'] != 'vapor']).drop('Phase', axis=1) 														# Drop all rows that are not pertaining to vapor, then drop the 'Phase' column entirely so we're just left with Viscosity
+		f = fluid_props[pres][['Temperature (K)', 'Density (g/ml)', 'Phase']].rename(columns={'Density (g/ml)': pres})		# Pull out Temperature, Internal Energy, and Phase data for each Pressure, and rename column to numercial pressure (in MPa)
+		f = f.drop(f.index[f['Phase'] != 'vapor']).drop('Phase', axis=1).dropna() 												# Drop all rows that are not pertaining to vapor, then drop the 'Phase' column entirely so we're just left with enthalpy
 		if not f.empty:
-			u_sp_data = pd.merge(u_sp_data, f, how='outer', on='Temperature (K)')												# Merge on 'Temperature (K)'. Non-overlapping values will have NaNs.
-			u_sp_data = u_sp_data.sort_values('Temperature (K)').reset_index(drop=True)											# Sort by temperature and reset index
-			u_sp_data.interpolate(inplace=True)
-			pressures.append(fluid_props[pres]['Pressure (MPa)'][0]*1E6)														# Interpolate across the non-overlapping values to fill in any NaNs that lie BETWEEN data points.
+			r_data = pd.merge(r_data, f, how='outer', on='Temperature (K)')												# Merge on 'Temperature (K)'. Non-overlapping values will have NaNs.
+			r_data = r_data.sort_values('Temperature (K)').reset_index(drop=True)											# Sort by volume and reset index
+			r_data = r_data.set_index('Temperature (K)').interpolate(method='index', limit_area='inside').reset_index()	# Fill in any missing values that fall between tabulated values
+			pressures.append(fluid_props[pres]['Pressure (MPa)'][f.index[0]]*1E6)												# Interpolate across the non-overlapping values to fill in any NaNs that lie BETWEEN data points.
 		else:
 			pass
-	u_sp_data = u_sp_data.fillna(method='bfill', axis=1)																		# We can't interpolate over NaN's, and it throws a NaN for all the pressures where there is no viscosity data (or when a phase change occurs), so...just backfill them for the time being
-	u_sp_data = u_sp_data.dropna(axis=0, how='any', thresh=2)																	# Drop any rows that are completely NaN'ed out
-	u_sp_data = u_sp_data.dropna(axis=1, how='all')																				# Drop the remaining all-Nan columns
-	u_from_PT_gas_func = interp2d(pressures[:len(u_sp_data.columns)-1], u_sp_data['Temperature (K)'].values, u_sp_data.iloc[:,1:].values)
-	return u_from_PT_gas_func
+
+	start = 150
+	stop = r_data['Temperature (K)'].iloc[-1]
+	step = r_data['Temperature (K)'].diff().median()
+	extrap_range = np.arange(start, stop, step)																					# Temperature range over which to extrapolate (pressure range is already okay, no need to extrapolate below 100 KPa)
+
+	r_data_new = pd.DataFrame(columns=['Temperature (K)'])
+	for pres in r_data.columns[1:]:
+		r_data_slice = r_data[['Temperature (K)', pres]].dropna()															# Get the values over the range you wish to use as the basis for your interpolation (and drop NaNs)
+		if not r_data_slice.empty:
+			f = interp1d(r_data_slice['Temperature (K)'], r_data_slice[pres].apply(np.log), fill_value='extrapolate')			# Make your interpolation function, first applying np.log() to all the values to make the extrapolation function from
+			r_data_fill = pd.DataFrame({'Temperature (K)': extrap_range, pres:np.exp(f(extrap_range))})							# Extrapolate over the range using said interp1d function
+			r_data_new = r_data_new.merge(r_data_fill, how='outer', on='Temperature (K)')
+	r_from_PT = interp2d(pressures[:len(r_data_new.columns)-1], r_data_new['Temperature (K)'].values, r_data_new.iloc[:,1:].values)
+	return r_from_PT
 
 
 
 
 # --------------------------------------------------------------------------------
 # Create a 2D function to return REAL density of a fluid at a given (P,T) based on NIST data and using linear interpolation
-def create_r_from_PT_gas_func(fluid_props):
-	r_data = pd.DataFrame(columns=['Temperature (K)'])
-	pressures = []		
-	for pres in list(fluid_props.keys()):
-		f = fluid_props[pres][['Temperature (K)', 'Density (g/ml)', 'Phase']].rename(columns={'Density (g/ml)': pres})			# Pull out Temperature, Enthalpy, and Phase data for each Pressure, and rename column to numercial pressure (in MPa)
-		f = f.drop(f.index[f['Phase'] != 'vapor']).drop('Phase', axis=1) 														# Drop all rows that are not pertaining to vapor, then drop the 'Phase' column entirely so we're just left with Viscosity
-		if not f.empty:
-			r_data = pd.merge(r_data, f, how='outer', on='Temperature (K)')												# Merge on 'Temperature (K)'. Non-overlapping values will have NaNs.
-			r_data = r_data.sort_values('Temperature (K)').reset_index(drop=True)											# Sort by temperature and reset index
-			r_data.interpolate(inplace=True)
-			pressures.append(fluid_props[pres]['Pressure (MPa)'][0]*1E6)														# Interpolate across the non-overlapping values to fill in any NaNs that lie BETWEEN data points.
-		else:
-			pass
-	r_data = r_data.fillna(method='bfill', axis=1)																		# We can't interpolate over NaN's, and it throws a NaN for all the pressures where there is no viscosity data (or when a phase change occurs), so...just backfill them for the time being
-	r_data = r_data.dropna(axis=0, how='any', thresh=2)																	# Drop any rows that are completely NaN'ed out
-	r_data = r_data.dropna(axis=1, how='all')																				# Drop the remaining all-Nan columns
-	r_from_PT_gas_func = interp2d(pressures[:len(r_data.columns)-1], r_data['Temperature (K)'].values, r_data.iloc[:,1:].values)
-	return r_from_PT_gas_func
-
-
-
-
-# --------------------------------------------------------------------------------
-# Create a 2D function to return P,T of a fluid at a given (rho,h) based on NIST data and using linear interpolation
-# def create_PT_from_rh_gas_func(fluid_props):
-# 	P_data = pd.DataFrame(columns=['Enthalpy (l+v, kJ/kg)'])
-# 	T_data = pd.DataFrame(columns=['Enthalpy (l+v, kJ/kg)'])
-# 	densities = []		
-# 	for dens in list(fluid_props.keys()):
-# 		f = fluid_props[dens][['Enthalpy (l+v, kJ/kg)', 'Pressure (MPa)', 'Quality (l+v)']].rename(columns={'Pressure (MPa)': dens})		# Pull out Temperature, Enthalpy, and Phase data for each Pressure, and rename column to numercial pressure (in MPa)
-# 		g = fluid_props[dens][['Enthalpy (l+v, kJ/kg)', 'Temperature (K)', 'Quality (l+v)']].rename(columns={'Temperature (K)': dens})		# Pull out Temperature, Enthalpy, and Phase data for each Pressure, and rename column to numercial pressure (in MPa)
-
-# 		f = f.drop(f.index[f['Quality (l+v)'] != 'undefined']).drop('Quality (l+v)', axis=1) 										# Drop all rows that are not pertaining to vapor, then drop the 'Quality' column entirely so we're just left with Viscosity
-# 		g = g.drop(g.index[g['Quality (l+v)'] != 'undefined']).drop('Quality (l+v)', axis=1) 										# Drop all rows that are not pertaining to vapor, then drop the 'Quality' column entirely so we're just left with Viscosity
+# def create_r_from_PT_gas_func(fluid_props):
+# 	r_data = pd.DataFrame(columns=['Temperature (K)'])
+# 	pressures = []		
+# 	for pres in list(fluid_props.keys()):
+# 		f = fluid_props[pres][['Temperature (K)', 'Density (g/ml)', 'Phase']].rename(columns={'Density (g/ml)': pres})			# Pull out Temperature, Enthalpy, and Phase data for each Pressure, and rename column to numercial pressure (in MPa)
+# 		f = f.drop(f.index[f['Phase'] != 'vapor']).drop('Phase', axis=1) 														# Drop all rows that are not pertaining to vapor, then drop the 'Phase' column entirely so we're just left with Viscosity
 # 		if not f.empty:
-# 			P_data = pd.merge(P_data, f, how='outer', on='Enthalpy (l+v, kJ/kg)')												# Merge on 'Temperature (K)'. Non-overlapping values will have NaNs.
-# 			T_data = pd.merge(T_data, g, how='outer', on='Enthalpy (l+v, kJ/kg)')												# Merge on 'Temperature (K)'. Non-overlapping values will have NaNs.
-
-# 			P_data = P_data.sort_values('Enthalpy (l+v, kJ/kg)').reset_index(drop=True)											# Sort by volume and reset index
-# 			T_data = T_data.sort_values('Enthalpy (l+v, kJ/kg)').reset_index(drop=True)											# Sort by volume and reset index
-
-# 			P_data.interpolate(inplace=True)																			# Fill in any missing values that fall between tabulated values
-# 			T_data.interpolate(inplace=True)
-
-# 			densities.append(fluid_props[dens]['Density (l, kg/m3)'][f.index[0]])												# Interpolate across the non-overlapping values to fill in any NaNs that lie BETWEEN data points.
+# 			r_data = pd.merge(r_data, f, how='outer', on='Temperature (K)')												# Merge on 'Temperature (K)'. Non-overlapping values will have NaNs.
+# 			r_data = r_data.sort_values('Temperature (K)').reset_index(drop=True)											# Sort by temperature and reset index
+# 			r_data.interpolate(inplace=True)
+# 			pressures.append(fluid_props[pres]['Pressure (MPa)'][0]*1E6)														# Interpolate across the non-overlapping values to fill in any NaNs that lie BETWEEN data points.
 # 		else:
 # 			pass
-# 	P_data = P_data.fillna(method='bfill', axis=1)																		# We can't interpolate over NaN's, and it throws a NaN for all the densities where there is no viscosity data (or when a phase change occurs), so...just backfill them for the time being
-# 	T_data = T_data.fillna(method='bfill', axis=1)																		# We can't interpolate over NaN's, and it throws a NaN for all the densities where there is no viscosity data (or when a phase change occurs), so...just backfill them for the time being
+# 	r_data = r_data.fillna(method='bfill', axis=1)																		# We can't interpolate over NaN's, and it throws a NaN for all the pressures where there is no viscosity data (or when a phase change occurs), so...just backfill them for the time being
+# 	r_data = r_data.dropna(axis=0, how='any', thresh=2)																	# Drop any rows that are completely NaN'ed out
+# 	r_data = r_data.dropna(axis=1, how='all')																				# Drop the remaining all-Nan columns
+# 	r_from_PT_gas_func = interp2d(pressures[:len(r_data.columns)-1], r_data['Temperature (K)'].values, r_data.iloc[:,1:].values)
+# 	return r_from_PT_gas_func
 
-# 	P_data = P_data.dropna(axis=0, how='any', thresh=2)																	# Drop any rows that are completely NaN'ed out
-# 	T_data = T_data.dropna(axis=0, how='any', thresh=2)																	# Drop any rows that are completely NaN'ed out
 
-# 	P_data = P_data.dropna(axis=1, how='all')																			# Drop the remaining all-Nan columns
-# 	T_data = T_data.dropna(axis=1, how='all')																			# Drop the remaining all-Nan columns
 
-# 	P_from_rh_func = interp2d(densities[:len(P_data.columns)-1], P_data['Enthalpy (l+v, kJ/kg)'].values, P_data.iloc[:,1:].values)
-# 	T_from_rh_func = interp2d(densities[:len(T_data.columns)-1], T_data['Enthalpy (l+v, kJ/kg)'].values, T_data.iloc[:,1:].values)
-# 	return P_from_rh_func, T_from_rh_func
 
 
 
@@ -396,3 +438,44 @@ def create_P_from_rT_gas_func(fluid_props):
 	P_data = P_data.dropna(axis=1, how='all')																			# Drop the remaining all-Nan columns
 	P_from_rT_func = interp2d(densities[:len(P_data.columns)-1], P_data['Temperature (K)'].values, P_data.iloc[:,1:].values)
 	return P_from_rT_func
+
+
+
+
+# --------------------------------------------------------------------------------
+# Create a 2D function to return P,T of a fluid at a given (rho,h) based on NIST data and using linear interpolation
+# def create_PT_from_rh_gas_func(fluid_props):
+# 	P_data = pd.DataFrame(columns=['Enthalpy (l+v, kJ/kg)'])
+# 	T_data = pd.DataFrame(columns=['Enthalpy (l+v, kJ/kg)'])
+# 	densities = []		
+# 	for dens in list(fluid_props.keys()):
+# 		f = fluid_props[dens][['Enthalpy (l+v, kJ/kg)', 'Pressure (MPa)', 'Quality (l+v)']].rename(columns={'Pressure (MPa)': dens})		# Pull out Temperature, Enthalpy, and Phase data for each Pressure, and rename column to numercial pressure (in MPa)
+# 		g = fluid_props[dens][['Enthalpy (l+v, kJ/kg)', 'Temperature (K)', 'Quality (l+v)']].rename(columns={'Temperature (K)': dens})		# Pull out Temperature, Enthalpy, and Phase data for each Pressure, and rename column to numercial pressure (in MPa)
+
+# 		f = f.drop(f.index[f['Quality (l+v)'] != 'undefined']).drop('Quality (l+v)', axis=1) 										# Drop all rows that are not pertaining to vapor, then drop the 'Quality' column entirely so we're just left with Viscosity
+# 		g = g.drop(g.index[g['Quality (l+v)'] != 'undefined']).drop('Quality (l+v)', axis=1) 										# Drop all rows that are not pertaining to vapor, then drop the 'Quality' column entirely so we're just left with Viscosity
+# 		if not f.empty:
+# 			P_data = pd.merge(P_data, f, how='outer', on='Enthalpy (l+v, kJ/kg)')												# Merge on 'Temperature (K)'. Non-overlapping values will have NaNs.
+# 			T_data = pd.merge(T_data, g, how='outer', on='Enthalpy (l+v, kJ/kg)')												# Merge on 'Temperature (K)'. Non-overlapping values will have NaNs.
+
+# 			P_data = P_data.sort_values('Enthalpy (l+v, kJ/kg)').reset_index(drop=True)											# Sort by volume and reset index
+# 			T_data = T_data.sort_values('Enthalpy (l+v, kJ/kg)').reset_index(drop=True)											# Sort by volume and reset index
+
+# 			P_data.interpolate(inplace=True)																			# Fill in any missing values that fall between tabulated values
+# 			T_data.interpolate(inplace=True)
+
+# 			densities.append(fluid_props[dens]['Density (l, kg/m3)'][f.index[0]])												# Interpolate across the non-overlapping values to fill in any NaNs that lie BETWEEN data points.
+# 		else:
+# 			pass
+# 	P_data = P_data.fillna(method='bfill', axis=1)																		# We can't interpolate over NaN's, and it throws a NaN for all the densities where there is no viscosity data (or when a phase change occurs), so...just backfill them for the time being
+# 	T_data = T_data.fillna(method='bfill', axis=1)																		# We can't interpolate over NaN's, and it throws a NaN for all the densities where there is no viscosity data (or when a phase change occurs), so...just backfill them for the time being
+
+# 	P_data = P_data.dropna(axis=0, how='any', thresh=2)																	# Drop any rows that are completely NaN'ed out
+# 	T_data = T_data.dropna(axis=0, how='any', thresh=2)																	# Drop any rows that are completely NaN'ed out
+
+# 	P_data = P_data.dropna(axis=1, how='all')																			# Drop the remaining all-Nan columns
+# 	T_data = T_data.dropna(axis=1, how='all')																			# Drop the remaining all-Nan columns
+
+# 	P_from_rh_func = interp2d(densities[:len(P_data.columns)-1], P_data['Enthalpy (l+v, kJ/kg)'].values, P_data.iloc[:,1:].values)
+# 	T_from_rh_func = interp2d(densities[:len(T_data.columns)-1], T_data['Enthalpy (l+v, kJ/kg)'].values, T_data.iloc[:,1:].values)
+# 	return P_from_rh_func, T_from_rh_func
