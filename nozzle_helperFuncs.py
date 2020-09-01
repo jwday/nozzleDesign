@@ -41,15 +41,16 @@ def create_phase_funcs(fluid_props, P_trip, T_trip):
 	saturated_pres = [P_trip]
 	for pres in list(fluid_props.keys()):
 		fluid_props[pres]['Phase Change'] = fluid_props[pres]['Phase'].ne(fluid_props[pres]['Phase'].shift().bfill()).astype(bool)		# Add a column called 'Phase Change' to identify when a phase change takes place
-		if fluid_props[pres]['Phase Change'].any():
-			saturated_temp.append(fluid_props[pres][fluid_props[pres]['Phase Change'] == True]['Temperature (K)'].values[0])			# Returns float, is temperature of phase change at specified pressure
-			saturated_pres.append(fluid_props[pres]['Pressure (MPa)'][0]*1E6)															# Returns float, is the specified pressure (in Pa)
+		if fluid_props[pres]['Phase Change'].any():																						# If any of the values in ['Phase Change'] are True:
+			saturated_temp.append(fluid_props[pres][fluid_props[pres]['Phase Change'] == True]['Temperature (K)'].values[0])				# Returns the temperature of phase change at specified pressure
+			saturated_pres.append(fluid_props[pres]['Pressure (MPa)'][0]*1E6)																# Returns the specified pressure (in Pa)
 		else:
-			saturated_temp.append(np.nan)
-			saturated_pres.append(np.nan)
+			# saturated_temp.append(np.nan)
+			# saturated_pres.append(np.nan)
+			pass
 	log_saturated_pres = [np.log(x) for x in saturated_pres]																			# Behavior can be modeled and interpolated logarithmically (T vs log(P) is very linear)
-	f = interp1d(pd.DataFrame(saturated_temp).dropna()[0].values, pd.DataFrame(log_saturated_pres).dropna()[0].values, kind='cubic', fill_value='extrapolate')		# Linearlly interpolate over T vs log(P), return a function f. Need to convert to df to drop na's to use quadratic fit
-	g = interp1d(pd.DataFrame(log_saturated_pres).dropna()[0].values, pd.DataFrame(saturated_temp).dropna()[0].values, kind='cubic', fill_value='extrapolate')		# Linearlly interpolate over T vs log(P), return a function g. Need to convert to df to drop na's to use quadratic fit
+	f = interp1d(pd.DataFrame(saturated_temp).dropna()[0].values, pd.DataFrame(log_saturated_pres).dropna()[0].values, kind='linear', fill_value='extrapolate')		# Linearlly interpolate over T vs log(P), return a function f. Need to convert to df to drop na's to use quadratic fit
+	g = interp1d(pd.DataFrame(log_saturated_pres).dropna()[0].values, pd.DataFrame(saturated_temp).dropna()[0].values, kind='linear', fill_value='extrapolate')		# Linearlly interpolate over T vs log(P), return a function g. Need to convert to df to drop na's to use quadratic fit
 
 	def saturated_pres_from_temp(temp):
 		h = np.e**f(temp)																												# When a temp is specified, use the function f to return a log(P), then exponentiate it to return P
@@ -66,20 +67,21 @@ def create_phase_funcs(fluid_props, P_trip, T_trip):
 	phase_data = pd.concat([phase_data, pd.DataFrame({'Temperature (K)': saturated_temp, 'Pressure (Pa)':saturated_pres, 'Phase':'', 'Dataset':'NIST Data'})], ignore_index=True)
 
 	# Liquid-Vapor Phase Change Line
-	xnew_lv = np.arange(T_trip, max(saturated_temp)+10, 1)
+	xnew_lv = np.arange(T_trip, max(saturated_temp)+40, 1)
 	ynew_lv = [saturated_pres_from_temp(x) for x in xnew_lv]
 	# ynew_lv_cc = [np.exp(-P_trip*(L/R)*((1/xnew_lv) - (1/T_trip)))]	# Clausius Clapeyron
-	phase_data = pd.concat([phase_data, pd.DataFrame({'Temperature (K)': xnew_lv, 'Pressure (Pa)':ynew_lv, 'Phase':'Liquid-Vapor Phase Equilibrium', 'Dataset':'Extrapolated'})], ignore_index=True)
+	phase_data = pd.concat([phase_data, pd.DataFrame({'Temperature (K)': xnew_lv, 'Pressure (Pa)':ynew_lv, 'Phase':'Liquid-Vapor Coexistence', 'Dataset':'Extrapolated'})], ignore_index=True)
 
 	# Solid-Vapor Phase Change Line
 	xnew_sv = np.arange(min(saturated_temp)-10, T_trip, 1)
 	ynew_sv = [saturated_pres_from_temp(x) for x in xnew_sv]
-	phase_data = pd.concat([phase_data, pd.DataFrame({'Temperature (K)': xnew_sv, 'Pressure (Pa)':ynew_sv, 'Phase':'Solid-Vapor Phase Equilibrium', 'Dataset':'Extrapolated'})], ignore_index=True)
+	phase_data = pd.concat([phase_data, pd.DataFrame({'Temperature (K)': xnew_sv, 'Pressure (Pa)':ynew_sv, 'Phase':'Solid-Vapor Coexistence', 'Dataset':'Extrapolated'})], ignore_index=True)
 
 	# Solid-Liquid Phase Change Line (just a guess)
 	xnew_sl = [T_trip, T_trip+.01]
 	ynew_sl = [P_trip, P_trip + 1000000]
-	phase_data = pd.concat([phase_data, pd.DataFrame({'Temperature (K)': xnew_sl, 'Pressure (Pa)':ynew_sl, 'Phase':'Solid-Liquid Phase Equilibrium', 'Dataset':'Extrapolated'})], ignore_index=True)
+	phase_data = pd.concat([phase_data, pd.DataFrame({'Temperature (K)': xnew_sl, 'Pressure (Pa)':ynew_sl, 'Phase':'Solid-Liquid Coexistence', 'Dataset':'Extrapolated'})], ignore_index=True)
+	phase_data = phase_data.sort_values('Temperature (K)').reset_index(drop=True)
 	
 	return saturated_pres_from_temp, saturated_temp_from_pres, phase_data
 
@@ -157,12 +159,46 @@ def create_ktc_func(fluid_props):
 
 # --------------------------------------------------------------------------------
 # Create a NEW 2D function to return enthalpy of a fluid at a given (P,T) based on NIST data and using linear interpolation
+# def create_h_from_PT_gas_func(fluid_props):
+# 	h_sp_data = pd.DataFrame(columns=['Temperature (K)'])
+# 	pressures = []		
+# 	for pres in list(fluid_props.keys()):
+# 		f = fluid_props[pres][['Temperature (K)', 'Enthalpy (kJ/kg)', 'Phase']].rename(columns={'Enthalpy (kJ/kg)': pres})		# Pull out Temperature, Enthalpy, and Phase data for each Pressure, and rename column to numercial pressure (in MPa)
+# 		f = f.drop(f.index[f['Phase'] != 'vapor']).drop('Phase', axis=1).dropna() 												# Drop all rows that are not pertaining to vapor, then drop the 'Phase' column entirely so we're just left with enthalpy
+# 		if not f.empty:
+# 			h_sp_data = pd.merge(h_sp_data, f, how='outer', on='Temperature (K)')												# Merge on 'Temperature (K)'. Non-overlapping values will have NaNs.
+# 			h_sp_data = h_sp_data.sort_values('Temperature (K)').reset_index(drop=True)											# Sort by volume and reset index
+# 			h_sp_data = h_sp_data.set_index('Temperature (K)').interpolate(method='index', limit_area='inside').reset_index()	# Fill in any missing values that fall between tabulated values
+# 			pressures.append(fluid_props[pres]['Pressure (MPa)'][f.index[0]]*1E6)												# Interpolate across the non-overlapping values to fill in any NaNs that lie BETWEEN data points.
+# 		else:
+# 			pass
+
+# 	start = 150
+# 	stop = h_sp_data['Temperature (K)'].iloc[-1]
+# 	step = h_sp_data['Temperature (K)'].diff().median()
+# 	extrap_range = np.arange(start, stop, step)																					# Temperature range over which to extrapolate (pressure range is already okay, no need to extrapolate below 100 KPa)
+
+# 	h_sp_data_new = pd.DataFrame(columns=['Temperature (K)'])
+# 	for pres in h_sp_data.columns[1:]:
+# 		h_sp_data_slice = h_sp_data[['Temperature (K)', pres]].dropna()															# Get the values over the range you wish to use as the basis for your interpolation (and drop NaNs)
+# 		if not h_sp_data_slice.empty:
+# 			f = interp1d(h_sp_data_slice['Temperature (K)'], h_sp_data_slice[pres].apply(np.log), fill_value='extrapolate')			# Make your interpolation function, first applying np.log() to all the values to make the extrapolation function from
+# 			h_sp_data_fill = pd.DataFrame({'Temperature (K)': extrap_range, pres:np.exp(f(extrap_range))})							# Extrapolate over the range using said interp1d function
+# 			h_sp_data_new = h_sp_data_new.merge(h_sp_data_fill, how='outer', on='Temperature (K)')
+# 	h_sp_from_PT = interp2d(pressures[:len(h_sp_data_new.columns)-1], h_sp_data_new['Temperature (K)'].values, h_sp_data_new.iloc[:,1:].values)
+# 	return h_sp_from_PT
+
+
+
+
+# --------------------------------------------------------------------------------
+# Create an EVEN NEWER 2D function to return enthalpy of a fluid at a given (P,T) based on NIST data and using linear interpolation
 def create_h_from_PT_gas_func(fluid_props):
 	h_sp_data = pd.DataFrame(columns=['Temperature (K)'])
 	pressures = []		
 	for pres in list(fluid_props.keys()):
-		f = fluid_props[pres][['Temperature (K)', 'Enthalpy (kJ/kg)', 'Phase']].rename(columns={'Enthalpy (kJ/kg)': pres})		# Pull out Temperature, Enthalpy, and Phase data for each Pressure, and rename column to numercial pressure (in MPa)
-		f = f.drop(f.index[f['Phase'] != 'vapor']).drop('Phase', axis=1).dropna() 												# Drop all rows that are not pertaining to vapor, then drop the 'Phase' column entirely so we're just left with enthalpy
+		f = fluid_props[pres][['Temperature (K)', 'Enthalpy (kJ/kg)', 'Phase']].rename(columns={'Enthalpy (kJ/kg)': pres})		# Pull out Temperature, Internal Energy, and Phase data for each Pressure, and rename column to numercial pressure (in MPa)
+		f = f.drop(f.index[f['Phase'] != 'vapor']).drop('Phase', axis=1).dropna() 												# Drop all rows that are not pertaining to vapor, then drop the 'Phase' column entirely so we're just left with internal energy
 		if not f.empty:
 			h_sp_data = pd.merge(h_sp_data, f, how='outer', on='Temperature (K)')												# Merge on 'Temperature (K)'. Non-overlapping values will have NaNs.
 			h_sp_data = h_sp_data.sort_values('Temperature (K)').reset_index(drop=True)											# Sort by volume and reset index
@@ -175,15 +211,20 @@ def create_h_from_PT_gas_func(fluid_props):
 	stop = h_sp_data['Temperature (K)'].iloc[-1]
 	step = h_sp_data['Temperature (K)'].diff().median()
 	extrap_range = np.arange(start, stop, step)																					# Temperature range over which to extrapolate (pressure range is already okay, no need to extrapolate below 100 KPa)
-
 	h_sp_data_new = pd.DataFrame(columns=['Temperature (K)'])
+	h_sp_extrap = pd.DataFrame(columns=['Temperature (K)'])
+
 	for pres in h_sp_data.columns[1:]:
 		h_sp_data_slice = h_sp_data[['Temperature (K)', pres]].dropna()															# Get the values over the range you wish to use as the basis for your interpolation (and drop NaNs)
 		if not h_sp_data_slice.empty:
-			f = interp1d(h_sp_data_slice['Temperature (K)'], h_sp_data_slice[pres].apply(np.log), fill_value='extrapolate')			# Make your interpolation function, first applying np.log() to all the values to make the extrapolation function from
-			h_sp_data_fill = pd.DataFrame({'Temperature (K)': extrap_range, pres:np.exp(f(extrap_range))})							# Extrapolate over the range using said interp1d function
+			slope, intercept, r_value, p_value, std_err = stats.linregress(h_sp_data_slice['Temperature (K)'].values, h_sp_data_slice[pres].apply(np.log).values)
+			def f(x):																											# Make your interpolation function, first applying np.log() to all the values to make the extrapolation function from
+				return (slope*x + intercept)
+
+			h_sp_data_fill = pd.DataFrame({'Temperature (K)': extrap_range, pres: np.exp(f(extrap_range))})									# Extrapolate over the range using said interp1d function
 			h_sp_data_new = h_sp_data_new.merge(h_sp_data_fill, how='outer', on='Temperature (K)')
 	h_sp_from_PT = interp2d(pressures[:len(h_sp_data_new.columns)-1], h_sp_data_new['Temperature (K)'].values, h_sp_data_new.iloc[:,1:].values)
+
 	return h_sp_from_PT
 
 
@@ -196,7 +237,7 @@ def create_u_from_PT_gas_func(fluid_props):
 	pressures = []		
 	for pres in list(fluid_props.keys()):
 		f = fluid_props[pres][['Temperature (K)', 'Internal Energy (kJ/kg)', 'Phase']].rename(columns={'Internal Energy (kJ/kg)': pres})		# Pull out Temperature, Internal Energy, and Phase data for each Pressure, and rename column to numercial pressure (in MPa)
-		f = f.drop(f.index[f['Phase'] != 'vapor']).drop('Phase', axis=1).dropna() 												# Drop all rows that are not pertaining to vapor, then drop the 'Phase' column entirely so we're just left with enthalpy
+		f = f.drop(f.index[f['Phase'] != 'vapor']).drop('Phase', axis=1).dropna() 												# Drop all rows that are not pertaining to vapor, then drop the 'Phase' column entirely so we're just left with internal energy
 		if not f.empty:
 			u_sp_data = pd.merge(u_sp_data, f, how='outer', on='Temperature (K)')												# Merge on 'Temperature (K)'. Non-overlapping values will have NaNs.
 			u_sp_data = u_sp_data.sort_values('Temperature (K)').reset_index(drop=True)											# Sort by volume and reset index
@@ -205,19 +246,24 @@ def create_u_from_PT_gas_func(fluid_props):
 		else:
 			pass
 
-	start = 150
+	start = 100
 	stop = u_sp_data['Temperature (K)'].iloc[-1]
 	step = u_sp_data['Temperature (K)'].diff().median()
 	extrap_range = np.arange(start, stop, step)																					# Temperature range over which to extrapolate (pressure range is already okay, no need to extrapolate below 100 KPa)
-
 	u_sp_data_new = pd.DataFrame(columns=['Temperature (K)'])
+	u_sp_extrap = pd.DataFrame(columns=['Temperature (K)'])
+
 	for pres in u_sp_data.columns[1:]:
 		u_sp_data_slice = u_sp_data[['Temperature (K)', pres]].dropna()															# Get the values over the range you wish to use as the basis for your interpolation (and drop NaNs)
 		if not u_sp_data_slice.empty:
-			f = interp1d(u_sp_data_slice['Temperature (K)'], u_sp_data_slice[pres].apply(np.log), fill_value='extrapolate')			# Make your interpolation function, first applying np.log() to all the values to make the extrapolation function from
-			u_sp_data_fill = pd.DataFrame({'Temperature (K)': extrap_range, pres:np.exp(f(extrap_range))})							# Extrapolate over the range using said interp1d function
+			slope, intercept, r_value, p_value, std_err = stats.linregress(u_sp_data_slice['Temperature (K)'].values, u_sp_data_slice[pres].apply(np.log).values)
+			def f(x):																											# Make your interpolation function, first applying np.log() to all the values to make the extrapolation function from
+				return (slope*x + intercept)
+
+			u_sp_data_fill = pd.DataFrame({'Temperature (K)': extrap_range, pres: np.exp(f(extrap_range))})									# Extrapolate over the range using said interp1d function
 			u_sp_data_new = u_sp_data_new.merge(u_sp_data_fill, how='outer', on='Temperature (K)')
 	u_sp_from_PT = interp2d(pressures[:len(u_sp_data_new.columns)-1], u_sp_data_new['Temperature (K)'].values, u_sp_data_new.iloc[:,1:].values)
+
 	return u_sp_from_PT
 
 
@@ -263,7 +309,7 @@ def create_r_from_PT_gas_func(fluid_props):
 		else:
 			pass
 
-	start = 150
+	start = 100
 	stop = r_data['Temperature (K)'].iloc[-1]
 	step = r_data['Temperature (K)'].diff().median()
 	extrap_range = np.arange(start, stop, step)																					# Temperature range over which to extrapolate (pressure range is already okay, no need to extrapolate below 100 KPa)
@@ -272,8 +318,12 @@ def create_r_from_PT_gas_func(fluid_props):
 	for pres in r_data.columns[1:]:
 		r_data_slice = r_data[['Temperature (K)', pres]].dropna()															# Get the values over the range you wish to use as the basis for your interpolation (and drop NaNs)
 		if not r_data_slice.empty:
-			f = interp1d(r_data_slice['Temperature (K)'], r_data_slice[pres].apply(np.log), fill_value='extrapolate')			# Make your interpolation function, first applying np.log() to all the values to make the extrapolation function from
-			r_data_fill = pd.DataFrame({'Temperature (K)': extrap_range, pres:np.exp(f(extrap_range))})							# Extrapolate over the range using said interp1d function
+			# f = interp1d(r_data_slice['Temperature (K)'], r_data_slice[pres].apply(np.log), kind='linear', fill_value='extrapolate')			# Make your interpolation function, first applying np.log() to all the values to make the extrapolation function from
+			slope, intercept, r_value, p_value, std_err = stats.linregress(r_data_slice['Temperature (K)'].values, r_data_slice[pres].apply(np.log).values)
+			def f(x):																											# Make your interpolation function, first applying np.log() to all the values to make the extrapolation function from
+				return (slope*x + intercept)
+
+			r_data_fill = pd.DataFrame({'Temperature (K)': extrap_range, pres: np.exp(f(extrap_range))})							# Extrapolate over the range using said interp1d function
 			r_data_new = r_data_new.merge(r_data_fill, how='outer', on='Temperature (K)')
 	r_from_PT = interp2d(pressures[:len(r_data_new.columns)-1], r_data_new['Temperature (K)'].values, r_data_new.iloc[:,1:].values)
 	return r_from_PT
@@ -479,3 +529,57 @@ def create_P_from_rT_gas_func(fluid_props):
 # 	P_from_rh_func = interp2d(densities[:len(P_data.columns)-1], P_data['Enthalpy (l+v, kJ/kg)'].values, P_data.iloc[:,1:].values)
 # 	T_from_rh_func = interp2d(densities[:len(T_data.columns)-1], T_data['Enthalpy (l+v, kJ/kg)'].values, T_data.iloc[:,1:].values)
 # 	return P_from_rh_func, T_from_rh_func
+
+
+
+def check_ru_phase(rho, u, phase_data):
+	# Given a rho, what is the corresponding u that would constitute a phase change?
+	idx_of_closest_under = abs(phase_data[phase_data['Density, v (kg/m^3)'] < rho]['Density, v (kg/m^3)'] - rho).idxmin()
+	idx_of_closest_over = abs(phase_data[phase_data['Density, v (kg/m^3)'] > rho]['Density, v (kg/m^3)'] - rho).idxmin()
+
+	u_x1 = phase_data['Internal Energy, v (kJ/kg)'].iloc[idx_of_closest_under]
+	u_x2 = phase_data['Internal Energy, v (kJ/kg)'].iloc[idx_of_closest_over]
+	u_y1 = phase_data['Density, v (kg/m^3)'].iloc[idx_of_closest_under]
+	u_y2 = phase_data['Density, v (kg/m^3)'].iloc[idx_of_closest_over]
+
+	# Linearly interpolate
+	m = (u_x2-u_x1)/(u_y2-u_y1)
+	u_crrspnd_to_rho = m*(rho - u_y1) + u_x1
+
+	# And given a u, what is the corresponding rho that would constitute a phase change?
+	idx_of_closest_under = abs(phase_data[phase_data['Internal Energy, v (kJ/kg)'] < u]['Internal Energy, v (kJ/kg)'] - u).idxmin()
+	idx_of_closest_over = abs(phase_data[phase_data['Internal Energy, v (kJ/kg)'] > u]['Internal Energy, v (kJ/kg)'] - u).idxmin()
+
+	r_x1 = phase_data['Internal Energy, v (kJ/kg)'].iloc[idx_of_closest_under]
+	r_x2 = phase_data['Internal Energy, v (kJ/kg)'].iloc[idx_of_closest_over]
+	r_y1 = phase_data['Density, v (kg/m^3)'].iloc[idx_of_closest_under]
+	r_y2 = phase_data['Density, v (kg/m^3)'].iloc[idx_of_closest_over]
+
+	m = (r_y2-r_y1)/(r_x2-r_x1)
+	rho_crrspnd_to_u = m*(u - r_x1) + r_y1
+
+	if rho < rho_crrspnd_to_u and u > u_crrspnd_to_rho:
+		phase = 'vapor'
+		# quality = 1
+	elif rho > rho_crrspnd_to_u or u < u_crrspnd_to_rho:
+		phase = 'solid-vapor two-phase'
+
+		# Temperature (used to estimate Enthalpy of Sublimation)
+		# T_y1 = phase_data['Temperature (K)'].iloc[idx_of_closest_under]
+		# T_y2 = phase_data['Temperature (K)'].iloc[idx_of_closest_over]
+		
+		# m = (T_y2-T_y1)/(r_x2-r_x1)
+		# T_crrspnd_to_u = m*(u - r_x1) + T_y1
+		
+		# enth_of_sub = y = -0.2985*T_crrspnd_to_u + 644.19
+		
+		# Enthalpy
+		# h_y1 = phase_data['Enthalpy (kJ/kg)'].iloc[idx_of_closest_under]
+		# h_y2 = phase_data['Enthalpy (kJ/kg)'].iloc[idx_of_closest_over]
+
+		# m = (h_y2-h_y1)/(r_x2-r_x1)
+		# h_crrspnd_to_u = m*(u - r_x1) + h_y1
+
+		# quality = h_crrspnd_to_u
+
+	return phase

@@ -141,9 +141,14 @@ for gas_type in gas_types:
 		cp_func = create_cp_func(fluid_props)
 		cv_func = create_cv_func(fluid_props)
 		ktc_func = create_ktc_func(fluid_props)
-		h_from_PT_gas_func = create_h_from_PT_gas_func(fluid_props)
-		u_from_PT_gas_func = create_u_from_PT_gas_func(fluid_props)
-		r_from_PT_gas_func = create_r_from_PT_gas_func(fluid_props)
+		h_from_PT_gas_func = create_h_from_PT_gas_func(fluid_props)		# Returns kJ/kg for (Pa, K) input
+		u_from_PT_gas_func = create_u_from_PT_gas_func(fluid_props)		# Returns kJ/kg for (Pa, K) input
+		r_from_PT_gas_func = create_r_from_PT_gas_func(fluid_props)		# Returns g/ml for (Pa, K) input
+
+		# Add r u data to "phase_data" (there's gotta be a better way)
+		phase_data['Internal Energy, v (kJ/kg)'] = [u_from_PT_gas_func(phase_data['Pressure (Pa)'].iloc[x], phase_data['Temperature (K)'].iloc[x])[0] for x in phase_data.index]
+		phase_data['Density, v (kg/m^3)'] = [r_from_PT_gas_func(phase_data['Pressure (Pa)'].iloc[x], phase_data['Temperature (K)'].iloc[x])[0]*1E3 for x in phase_data.index]
+		phase_data['Enthalpy, v (kJ/kg)'] = [h_from_PT_gas_func(phase_data['Pressure (Pa)'].iloc[x], phase_data['Temperature (K)'].iloc[x])[0] for x in phase_data.index]
 
 		P_from_ru_func, T_from_ru_func = create_PT_from_ru_gas_func(fluid_props_vol)
 		P_from_rh_func, T_from_rh_func = create_PT_from_rh_gas_func(fluid_props_vol)
@@ -200,6 +205,7 @@ for gas_type in gas_types:
 	mu_t_plenum 	= [mu_t_init]
 	u_sp_plenum 	= [u_sp_init]
 	h_sp_plenum 	= [h_sp_init]
+	list_of_qual_plenum = []
 
 	Re_upstream = []
 	Nu_upstream = []
@@ -525,17 +531,51 @@ for gas_type in gas_types:
 			delta_E = dE_dt*time_step																
 
 			u_sp_plenum.append( ((u_sp_plenum[-1]*m_gas[-2]) - delta_E)/m_gas[-1] )
-			
+
 			P_from_ru = P_from_ru_func(rho_t_plenum[-1], u_sp_plenum[-1]/1000)[0]*1000000
-			T_from_ru = T_from_ru_func(rho_t_plenum[-1], u_sp_plenum[-1]/1000)[0]
-
 			P_t_plenum.append(P_from_ru)
-			T_t_plenum.append(T_from_ru)
 
-			h_sp_plenum.append( h_from_PT_gas_func(P_from_ru, T_from_ru)[0]*1000)					# J/s, calculate new specific enthalpy 
+			# It is at this point that you must check the phase of the propellent
+			phase = check_ru_phase(rho_t_plenum[-1], u_sp_plenum[-1]/1000, phase_data)
+			if phase == 'vapor':
+				T_from_ru = T_from_ru_func(rho_t_plenum[-1], u_sp_plenum[-1]/1000)[0]
+				T_t_plenum.append(T_from_ru)
+				list_of_qual_plenum.append(1)
+				h_sp_plenum.append( h_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000)					# J/s, calculate new specific enthalpy 
+			else:
+				T_sat = fg_temp_from_pres(P_t_plenum[-1])
+				T_t_plenum.append(T_sat)
+				h_sp_plenum.append( h_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000)
+
+				# Now let's determine the quality
+				# This will get you the Enthalpy of Sublimation at a given temperature (determined empircally using NIST data)
+				enth_of_sub = y = -0.2985*T_t_plenum[-1] + 644.19
+				
+				# Used for determine the quality
+				rho_temp = rho_t_plenum[-1]
+
+				# Get the enthalpy for the saturated vapor phase enthalpy at this given density
+				idx_of_closest_under = abs(phase_data[phase_data['Density, v (kg/m^3)'] < rho_temp]['Density, v (kg/m^3)'] - rho_temp).idxmin()
+				idx_of_closest_over = abs(phase_data[phase_data['Density, v (kg/m^3)'] > rho_temp]['Density, v (kg/m^3)'] - rho_temp).idxmin()
+
+				r_x1 = phase_data['Density, v (kg/m^3)'].iloc[idx_of_closest_under]
+				r_x2 = phase_data['Density, v (kg/m^3)'].iloc[idx_of_closest_over]
+				h_y1 = phase_data['Enthalpy, v (kJ/kg)'].iloc[idx_of_closest_under]
+				h_y2 = phase_data['Enthalpy, v (kJ/kg)'].iloc[idx_of_closest_over]
+				
+				m = (h_y2-h_y1)/(r_x2-r_x1)
+				h_v_sat = m*(rho_temp - r_x1) + h_y1
+
+				list_of_qual_plenum.append(1 - ((h_v_sat - h_sp_plenum[-1]/1000) / enth_of_sub))
+
 
 			list_of_P_fg_t.append(fg_pres_from_temp(T_from_ru))		# Track the phase change pressure at given temperature
 			list_of_T_fg_t.append(fg_temp_from_pres(P_from_ru))		# Track the phase change temperature at given pressure
+
+			# Here is where you should check the phase based on rho and u
+			# i.e. "if rho < phase_line and u < phase_line, then check quality"
+
+
 
 			# I'd like a third function to determine quality based on the aforementioned parameters.
 
@@ -619,6 +659,7 @@ for gas_type in gas_types:
 									mu_t_plenum,
 									h_sp_plenum,
 									u_sp_plenum,
+									list_of_qual_plenum,
 
 									Re_upstream,
 									Nu_upstream,
@@ -671,6 +712,7 @@ for gas_type in gas_types:
 									'mu_t',
 									'h_sp',
 									'u_sp',
+									'X',
 
 									'Re_up',
 									'Nu_up',
@@ -750,10 +792,9 @@ for gas_type in gas_types:
 	ax.yaxis.set_major_formatter(yfmt)
 	ax.yaxis.offsetText.set_fontsize(6)
 	ax.ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
-
 	
 	legend, handles = ax.get_legend_handles_labels()		# Get the legend and hadles so we can modify them
-	del legend[0], legend[-2], handles[0], handles[-2]		# Remove some of the dumb legend stuff that gets added by sns.scatterplot and sns.lineplot
+	del legend[0], handles[0], legend[-2], handles[-2]		# Remove some of the dumb legend stuff that gets added by sns.scatterplot and sns.lineplot
 	legend = legend[-1:] + legend[:-1]						# Move the last element to the beginning
 	handles = handles[-1:] + handles[:-1]					# Move the last handle to the beginning
 	ax.legend(legend, handles, loc='lower right')			# Make a new legend with the modified handles
@@ -762,28 +803,24 @@ for gas_type in gas_types:
 
 
 	# --------------------------------------------------------------------------------
-	# Create a plot of u vs. rho to begin identifying phase transitions
+	# Create a plot of u vs. rho to identify point of phase transition
 	fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
 	# Plot phase data
-	u_fg_gas = [u_from_PT_gas_func(x,y)[0] for x,y in all_data[all_data['gas_type']==gas_type][['P_fg_t', 'T_fg_t']].values]
-	r_fg_gas = [r_from_PT_gas_func(x,y)[0]*1000 for x,y in all_data[all_data['gas_type']==gas_type][['P_fg_t', 'T_fg_t']].values]
-	u_r_phase_data = pd.DataFrame({'Internal Energy (kJ/kg)': u_fg_gas, 'Density (kg/m^3)': r_fg_gas})
-	# sns.scatterplot(ax=ax, x='Temperature (K)', y='Pressure (Pa)', palette='colorblind', data=phase_data[phase_data['Dataset']=='NIST Data'], hue='Dataset', zorder=10)
-	# sns.lineplot(ax=ax, x='Internal Energy (kJ/kg)', y='Density (kg/m^3)', palette='colorblind', data=u_r_phase_data)
-	ax.plot(u_r_phase_data['Internal Energy (kJ/kg)'], u_r_phase_data['Density (kg/m^3)'], label='Phase Change', linestyle='-')
+	sns.scatterplot(ax=ax, x='Internal Energy, v (kJ/kg)', y='Density, v (kg/m^3)', palette='colorblind', data=phase_data[phase_data['Dataset']=='NIST Data'], hue='Dataset', zorder=10)
+	sns.lineplot(ax=ax, x='Internal Energy, v (kJ/kg)', y='Density, v (kg/m^3)', palette='colorblind', data=phase_data[phase_data['Dataset']=='Extrapolated'], hue='Phase')
 
-	# Plot h-p path
+	# Plot r-u path
 	sim_flow = current_data[current_data['flow regimes'].isin(['underexpanded', 'weak shock outside', 'normal shock at exit', 'normal shock in nozzle', 'subsonic'])][['u_sp', 'rho_t']]
-	ax.plot([x/1000 for x in sim_flow['u_sp']], sim_flow['rho_t'], label='Plenum, Total h-r Path', linestyle='--')
+	ax.plot([x/1000 for x in sim_flow['u_sp']], sim_flow['rho_t'], label=r'Plenum, Total $\rho$-u Path', linestyle='--')
 	ax.plot([x/1000 for x in sim_flow['u_sp']][0], sim_flow['rho_t'][0], 'o', fillstyle='none', label='Start')
 	ax.plot([x/1000 for x in sim_flow['u_sp']][-1:], sim_flow['rho_t'][-1:], 'x', label='Finish')
 	
-	ax.set_title(r'Plenum $\rho$-h Path ({})'.format(gas_label, process_label))
+	ax.set_title(r'Plenum $\rho$-u Path ({})'.format(gas_label, process_label))
 	ax.set_xlabel(r'Internal Energy, $kJ/kg$')
 	ax.set_ylabel(r'Density, $kg/m^3$')
 	# ax.set(yscale="log")
 	if gas_type == 'CO2':
-		ax.set_xlim([360, 430])
+		ax.set_xlim([345, 430])
 		ax.set_ylim([3, 17])
 
 	# Change tick formatting to make it look nicer
@@ -793,13 +830,20 @@ for gas_type in gas_types:
 	ax.yaxis.set_major_formatter(yfmt)
 	ax.yaxis.offsetText.set_fontsize(6)
 	ax.ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
-
 	
 	legend, handles = ax.get_legend_handles_labels()		# Get the legend and hadles so we can modify them
-	del legend[0], legend[-2], handles[0], handles[-2]		# Remove some of the dumb legend stuff that gets added by sns.scatterplot and sns.lineplot
+	handles[1] = 'Solid/Vapor Coexistence Boundary'
+	handles[2] = 'Solid/Liquid Coexistence Boundary'
+	handles[3] = 'Liquid/Vapor Coexistence Boundary'	
+	del legend[0], handles[0], legend[-2], handles[-2]		# Remove some of the dumb legend stuff that gets added by sns.scatterplot and sns.lineplot
 	legend = legend[-1:] + legend[:-1]						# Move the last element to the beginning
 	handles = handles[-1:] + handles[:-1]					# Move the last handle to the beginning
-	ax.legend(legend, handles, loc='lower right')			# Make a new legend with the modified handles
+	ax.legend(legend, handles, loc='upper left')			# Make a new legend with the modified handles
+
+	ax.text(405, 6, 'Vapor Phase', style='italic',
+        bbox={'facecolor': 'red', 'alpha': 0.4, 'pad': 7})
+	ax.text(360, 8, 'Two-Phase Solid/Vapor', style='italic',
+        bbox={'facecolor': 'red', 'alpha': 0.4, 'pad': 7})
 
 	plt.show()
 
@@ -827,6 +871,7 @@ data = 	{
 			# 'mu_t':				all_data['mu_t'],
 			# 'h_sp':				all_data['h_sp'],
 			# 'u_sp':				all_data['u_sp'],
+			'X':				all_data['X'],
 
 			# 'Re_up':			all_data['Re_up'],
 			# 'Nu_up':			all_data['Nu_up'],
@@ -860,7 +905,7 @@ data = 	{
 			# 'thrust': 		all_data['thrust'],
 			# 'thrust_coeff': 	all_data['thrust_coeff'],
 			# 'visc_losses': 		all_data['visc_loss'],
-			'thrust_eff': 		all_data['thrust_eff'],
+			# 'thrust_eff': 		all_data['thrust_eff'],
 			# 'avg_thrust': 	all_data['avg_thrust'],
 			# 'cum_impulse': 	all_data['cum_impulse'],
 			# 'ISP': 			all_data['ISP'],
@@ -879,6 +924,7 @@ figname = {
 			'mu_t': 			'Plenum Total Specific Volume',
 			'h_sp':				'Specific Enthalpy',
 			'u_sp':				'Specific Internal Energy',
+			'X':				'Plenum Vapor Quality',
 
 			'Re_up':			'Upstream Reynolds No.',
 			'Nu_up':			'Upstream Nusselt No.',
@@ -931,6 +977,7 @@ times = {
 			'mu_t':				all_data['time'],
 			'h_sp':				all_data['time'],
 			'u_sp':				all_data['time'],
+			'X':				all_data['time'],
 
 			'Re_up':			all_data['time'],
 			'Nu_up':			all_data['time'],
@@ -983,6 +1030,7 @@ ylabels = {
 			'mu_t': 			'Plenum Total Sp. Vol, $m^3/kg$',
 			'h_sp':				'Specific Enthalpy, $kJ/kg$',
 			'u_sp':				'Specific Internal Energy, $kJ/kg$',
+			'X':				'Plenum Quality',
 
 			'Re_up':			'Upstream Reynolds No.',
 			'Nu_up':			'Upstream Nusselt No.',
