@@ -22,18 +22,19 @@ gas_types = ['CO2']	# Gas choices: R236fa, R134a, N2, CO2, H2, air
 d_upstream = 2 / 1000			# Upstream "pipe" diameter (really just the valve orifice diameter), units of m (mm / 1000)
 L_upstream = 40 / 1000			# Upstream "pipe length" aka path length through valve. Just an estimate.
 T_wall = 293					# Valve brass body wall tempertaure used to evaluate heat transfer conductivity
-m_brass	= 60 / 1000				# Mass brass, kg
+m_brass	= 70 / 1000				# Mass brass, kg
 cp_brass = 380					# Specific heat capacity of brass, J/kg-K
 cutoff_cond = 0.0001			# Cutoff condition, defined by the fractional change in pressure (relative to P_t_init) per second, units of 1/sec
-figsize = (7.5, 4)				# Figure size (in)
+figsize = (6.5, 3)				# Figure size (in)
 dpi = 150						# Figure dpi
 fudge_factor = 1
 
 # Choose state transition process. 'mass-energy-balance', 'isentropic', 'isenthalpic', 'isothermal'
 process = 'mass-energy-balance'
+# process = 'isentropic'
 
 # Include thermal model?
-thermal_model = False
+thermal_model = True
 
 
 
@@ -54,11 +55,6 @@ sns.set_context("paper", font_scale = 1, rc={"grid.linewidth": .5})
 
 
 
-def stream_props(area_ratio, P_t, T_t):
-	mach_no = supersonic_mach_anywhere(area_ratio)
-	pres = P_t * (1 + L*mach_no**2)**-W
-	temp = T_t * (1 + L*mach_no**2)**-1
-	return mach_no, pres, temp
 
 
 
@@ -261,34 +257,18 @@ for gas_type in gas_types:
 	iter = []
 
 
-	## ==================================================================================
-	## ---- SOLVE MACH-AREA RELATION ----------------------------------------------------
-	## ==================================================================================
-	# Init control items
-	i = 0
-	n_max = 0
-	end_loop_flag = False
-	time_step = time_step_init
-	delta_pres = 1
 
-	# --------------------------------------------------------------------------------
-	# Nozzle Geometry
-	A_star = np.pi*(d_star**2)/4  					# Throat area
-	A_exit = A_star*expansion_ratio  				# Exit area
-	d_exit = np.sqrt(4*A_exit/np.pi)  				# Exit diameter (m)
 
-	# Establish thermodynamic relationships in more compact terms
-	P = (k+1)/2
-	L = (k-1)/2
-	W = k/(k-1)
-	Q = P/L  # aka (k+1)/(k-1)
-	S = (A_exit/A_star)**2
-	Y = np.sqrt(k/R)
+	## ==================================================================================
+	## ---- HELPER FUNCTIONS ------------------------------------------------------------
+	## ==================================================================================
 	
+	# The common term seen in most Mach number relations, defined here as a function for ease
 	def Z_func(M):
 		Z = 1 + L*M**2
 		return Z
 
+	# Mach number-Temperature relation for Rayleigh flow
 	def rayleigh_machTempRelation(X, *S):
 		M1 = S[0]				# Mach number at station 1
 		T1 = S[1]				# Static temperature at station 1
@@ -296,9 +276,35 @@ for gas_type in gas_types:
 		f = ( ((1 + k*M1**2)/(1 + k*X))*(np.sqrt(X)/M1) )**2 - (T2/T1)
 		return f
 
+	# Gnielinski correlation for estimating the Nusselt number
 	def nusseltGnielinski(Re, Pr, f):
 		Nu = (f/8)*(Re - 1000)*Pr / (1 + 12.7*np.sqrt(f/8)*(Pr**(2/3) - 1))
 		return Nu
+
+	# Isentropic flow relation
+	# def stream_props(area_ratio, P_t, T_t):
+	# 	mach_no = supersonic_mach_anywhere(area_ratio)
+	# 	pres = P_t * (1 + L*mach_no**2)**-W
+	# 	temp = T_t * (1 + L*mach_no**2)**-1
+	# 	return mach_no, pres, temp
+
+
+	## ==================================================================================
+	## ---- MACH-AREA RELATION ----------------------------------------------------------
+	## ==================================================================================
+
+	# Nozzle Geometry
+	A_star = np.pi*(d_star**2)/4  					# Throat area
+	A_exit = A_star*expansion_ratio  				# Exit area
+	d_exit = np.sqrt(4*A_exit/np.pi)  				# Exit diameter (m)
+
+	# Common isentropic nozzle relationships rewritten in compact terms
+	P = (k+1)/2
+	L = (k-1)/2
+	W = k/(k-1)
+	Q = P/L  # aka (k+1)/(k-1)
+	S = (A_exit/A_star)**2
+	Y = np.sqrt(k/R)
 
 	# --------------------------------------------------------------------------------
 	# Solve the Isentropic Mach Number-Area relation for the (critical) Mach Numbers at the exit
@@ -316,6 +322,7 @@ for gas_type in gas_types:
 	M_crit_sub = np.sqrt(sol0[0])  # Subsonic critical mach no.
 	M_crit_sup = np.sqrt(sol0[1])  # Supersonic critical mach no.
 
+
 	# --------------------------------------------------------------------------------
 	# Solve the same relation for the upstream subsonic Mach number through the valve (very approximate) so that you can get the static pressure and temperature of the upstream flow
 	# I approximate the Area Ratio as the area of the valve orifice to the nozzle throat area
@@ -327,18 +334,17 @@ for gas_type in gas_types:
 	M_sup_upstream = np.sqrt(sol1[1])  # Supersonic critical mach no.
 
 
-
 	# This will be used to help us estimate the viscous losses
-	# I'm going to define a series of Mach vs. Area Ratio, then use some linear interpolation to determine a Mach number at a given area ratio (for viscous loss integral). Should only have to do this one.
+	# I'm going to define a series of Mach vs. Area Ratio, then use some linear interpolation to determine a Mach number at a given area ratio (for viscous loss integral). Should only have to do this once.
 	# Currently not being used
-	range_of_subsonic_mach_nos = np.linspace(0.1, 1.1, 501)
-	range_of_supersonic_mach_nos = np.linspace(1.1, 5.1, 501)
+	# range_of_subsonic_mach_nos = np.linspace(0.1, 1.1, 501)
+	# range_of_supersonic_mach_nos = np.linspace(1.1, 5.1, 501)
 
-	range_of_subsonic_area_ratios = [np.sqrt( ((1 + L*x**2)**Q) / ((x**2)*(P**Q)) ) for x in range_of_subsonic_mach_nos]
-	range_of_supersonic_area_ratios = [np.sqrt( ((1 + L*x**2)**Q) / ((x**2)*(P**Q)) ) for x in range_of_supersonic_mach_nos]
+	# range_of_subsonic_area_ratios = [np.sqrt( ((1 + L*x**2)**Q) / ((x**2)*(P**Q)) ) for x in range_of_subsonic_mach_nos]
+	# range_of_supersonic_area_ratios = [np.sqrt( ((1 + L*x**2)**Q) / ((x**2)*(P**Q)) ) for x in range_of_supersonic_mach_nos]
 
-	subsonic_mach_anywhere = interp1d(range_of_subsonic_area_ratios, range_of_subsonic_mach_nos)
-	supersonic_mach_anywhere = interp1d(range_of_supersonic_area_ratios, range_of_supersonic_mach_nos)
+	# subsonic_mach_anywhere = interp1d(range_of_subsonic_area_ratios, range_of_subsonic_mach_nos)
+	# supersonic_mach_anywhere = interp1d(range_of_supersonic_area_ratios, range_of_supersonic_mach_nos)
 
 
 
@@ -346,70 +352,69 @@ for gas_type in gas_types:
 	## ==================================================================================
 	## ---- LOOP THROUGH SUPPLY PRESSURES -----------------------------------------------
 	## ==================================================================================
+	# Loop control items
+	i = 0
+	n_max = 0
+	end_loop_flag = False
+	time_step = time_step_init
+	delta_pres = 1
+
 	# Start with a P_t_init and T_t_init and repeatedly run the nozzle code
 	# Nozzle code will return throat and exit flow properties (along with thrust, ISP, impulse) based on supply properties
 	# Results are used to determine mass flow rate, which is then used to calculate new supply pressure
 	while delta_pres > cutoff_cond and P_t_plenum[-1] > P_amb:
 		if thermal_model:
-			# Put the CONSTANT PRESSURE temperature change here
-			# First calculate Nusselt number using the Gnielinski correlation
-			# ...to do that you need a Reynolds number, Prandtl number, and Darcy friction factor
-			# ...to get the Reynolds number you need mass flow rate (nozzle function) and viscosity
-			# ...viscosity and mass flow rate both depend on temperature
-			# Realistically, the temperature will depend on the HTC and temperature gradient during this time period
-
-			# Step 0: Solve machAreaRelation at nozzle INLET area to get SUBSONIC mach number, Ma
-			# Step 1: Run nozzle() at isentropic T_t, P_t, rho_t to return m_dot
-			# Step 2: Use isentropic static temperature to get viscosity, mu
-			# Step 3: Use isentropic m_dot and mu to calculate Re
-			# Step 4: Use Re, Pr, and f to calculate Nu using the Gnielinski correlation
-			# Step 5: Use Nu to calculate heat transfer coefficient, htc
-			# Step 6: Use h, A, delta_T (T_wall - T_static), and m_dot to get Q (total specific heat, J/g) from Q_dot (J/s)
-			# Step 7: Use Q = Cp*delT to estimate the delT of the fluid.
-			# Step 8: Add delT to T_static, then calculate new T_t
-
-			# Step 1:
+			# Step 1: Get initial mass flow rate (This is for the FIRST time step only!)
 			if i == 0:
 				P_star, T_star, rho_star, Re_star, M_star, v_star, P_exit, T_exit, rho_exit, M_exit, v_exit, c_exit, m_dot, F, CF, flow_regime, area_ratio_at_shock, F_mdotv, F_pdiff = nozzle(k, R, M_crit_sub, M_crit_sup, P_t_init, T_t_init, rho_t_init, P_amb, d_star, expansion_ratio, half_angle, gas_type, visc_func, r_from_PT_gas_func)
 				list_of_mdots.append(m_dot*1000)
 
-			# Step 2:
+			# Step 2: Calculate the upstream (i.e. "in") flow properties (temperature, pressure, viscosity)
 			T_upstream = T_t_plenum[-1]/Z_func(M_sub_upstream)
 			P_upstream = P_t_plenum[-1]/(Z_func(M_sub_upstream)**W)
-			visc_upstream.append(visc_func(P_upstream, T_upstream)[0] / 1000000)									# Convert from uPa-s to Pa-s (equivalent to kg/m-s), and pull value out of resultant array
+			visc_upstream.append(visc_func(P_upstream, T_upstream)[0] / 1000000)							# Convert from uPa-s to Pa-s (equivalent to kg/m-s), and pull value out of resultant array
 			
-			# Step 3:
+			# Step 3: Calculate the upstream Reynolds number using the aforementioned flow properties
 			Re_upstream.append((list_of_mdots[-1]/1000)*d_upstream/(A_upstream*visc_upstream[-1]))
 			
-			# Step 4:
+			# Step 4: Determine the Nusselt number. There are a few different ways but this seems to be the most legitimate method.
 			f = 0.07																						# Darcy friction factor. Just an estimate from Moody chart based on brass or steel or something similar.
-			# f_alt = (0.79*np.log(Re_upstream[-1])-1.64)**-2												# This stays very low...like, between 0.023 and 0.035
+			# f = (0.79*np.log(Re_upstream[-1])-1.64)**-2													# Another way to estimate the Darcy friction factor. This version stays very low...like, between 0.023 and 0.035
 
-			cp_upstream = cp_func(P_upstream, T_upstream)[0] * 1000											# Convert from J/g-K to J/kg-K
-			ktc_upstream = ktc_func(P_upstream,  np.average([T_wall[-1], T_upstream]))[0]					# Thermal conductivity, W/m-K. This value is typically evaluated at the average of the wall temperature and fluid temperature
-			Pr_upstream.append(visc_upstream[-1] * cp_upstream / ktc_upstream)								# Calculate Prandtl number, though this stays almost entirely between 0.784 and 0.77, so maybe just used a fixed value...say, 0.78?
+			cp_upstream = cp_func(P_upstream, T_upstream)[0] * 1000											# Specific heat at constant pressure, J/kg-K
+			ktc_upstream = ktc_func(P_upstream,  np.average([T_wall[-1], T_upstream]))[0]					# Thermal conductivity of fluid, W/m-K. (This value is typically evaluated at the average of the wall temperature and fluid temperature)
+			Pr_upstream.append(visc_upstream[-1] * cp_upstream / ktc_upstream)								# Prandtl number, though this stays almost entirely between 0.770 and 0.784, so maybe just used a fixed value...say, 0.777?
 
 			if Re_upstream[-1] >= 3000:
-				Nu_upstream.append( nusseltGnielinski(Re_upstream[-1], Pr_upstream[-1], f) )
-				Nu_last = Nu_upstream[-1]
-				m_dot_last = m_dot
+				Nu_upstream.append( nusseltGnielinski(Re_upstream[-1], Pr_upstream[-1], f) )				# Use the Gnielinski correlation to calculate the Nusselt number
 			else:
-				Nu_upstream.append(m_dot*(Nu_last/m_dot_last))
-				# Nu_upstream.append(4.36)
+				Nu_upstream.append(Nu_upstream[-1]*(list_of_mdots[-1]/list_of_mdots[-2]))					# Make the Nusselt number a linear function of mass flow rate
 
-			# Step 5:
-			htc_upstream = Nu_upstream[-1] * ktc_upstream / L_upstream										# Heat transfer coefficient, W/m^2-K
+			# Step 5: Determine the Heat Transfer Coefficient for convective heat transfer based on the definition of the Nusselt number
+			htc_upstream = fudge_factor * Nu_upstream[-1] * ktc_upstream / L_upstream						# Heat transfer coefficient, W/m^2-K
 			
-			# Step 6:
+			# Step 6: Calculate the heat rate
 			Q_dot_upstream = htc_upstream * (np.pi*d_upstream*L_upstream) * (T_wall[-1] - T_upstream)		# Heat rate, W (J/s)
+
+			# Step 7: Calculate the change in enthalpy of the fluid due to heating
 			delh_upstream = Q_dot_upstream / (list_of_mdots[-1]/1000)										# Change in specific enthalpy, J/kg
 			
-			# Step 7:
+			# Step 8: Calculate the change in temperature (both of the fluid and of the wall) from the change in enthalpy
 			delT_through_valve = delh_upstream / cp_upstream
 			delT_wall = Q_dot_upstream*time_step / (m_brass*cp_brass)
 			
-			# Step 8:
-			T_inlet.append(T_upstream + delT_through_valve)
+			# Step 8.5a: Calculate alternate T_out and T_wall based on derivation you just made
+			Q_dot = htc_upstream * (np.pi*d_upstream*L_upstream) * (T_wall[-1] - T_upstream)				# Heat rate, W (J/s), using the wall temperature calculated on the previous loop
+			T_out = Q_dot * (1000/(Z*R*list_of_mdots[-1])) + T_upstream										# This assumes T_gas = T_upstream and is the least conservative estimate because the Delta-Temp will always be maximum
+
+			alpha = (htc_upstream*np.pi*d_upstream*L_upstream)/(2*Z*R*list_of_mdots[-1])					# Simplication for use in the "complex" formulation which uses the average of the inlet and outlet flow temperatures. Probably a little more accurate.
+			T_out_complex = (1/(1+alpha)) * (alpha*(2*T_wall[-1] - T_upstream) + T_upstream)
+
+			T_wall_new = (-Q_dot*time_step / (m_brass*cp_brass)) + T_wall[-1]
+
+			# Step 9: Calculate the fluid temperature coming out of the valve and pass that to the inlet of the nozzle. Use Rayleigh flow equations to calculate new fluid properties.
+			# T_inlet.append(T_upstream + delT_through_valve)
+			T_inlet.append(T_out)
 			T_wall.append(T_wall[-1] - delT_wall)
 
 			x1 = np.array([0.000001, 1])	# List of M to solve for roots over
@@ -419,10 +424,10 @@ for gas_type in gas_types:
 			P_t_inlet.append( P_t_plenum[-1]*((1+k*M_sub_upstream**2)/(1+k*M_inlet[-1]**2))*((Z_func(M_inlet[-1]))/(Z_func(M_sub_upstream)))**W )
 			T_t_inlet.append(T_inlet[-1] * Z_func(M_inlet[-1]))
 			rho_t_inlet.append(r_from_PT_gas_func(P_t_inlet[-1], T_t_inlet[-1])[0]*1000)
+
 			if i == 0:
 				del(list_of_mdots[0])
 
-		
 		else:
 			P_t_inlet.append(P_t_plenum[-1])
 			T_t_inlet.append(T_t_plenum[-1])
@@ -542,9 +547,12 @@ for gas_type in gas_types:
 				T_t_plenum.append(T_from_ru)
 				list_of_qual_plenum.append(1)
 				h_sp_plenum.append( h_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000)					# J/s, calculate new specific enthalpy 
+
+				P_fg_t = fg_pres_from_temp(T_from_ru)															# Track the phase change pressure at given temperature
+				T_fg_t = fg_temp_from_pres(P_from_ru)															# Track the phase change temperature at given pressure
+
 			else:
-				T_sat = fg_temp_from_pres(P_t_plenum[-1])
-				T_t_plenum.append(T_sat)
+				T_t_plenum.append(fg_temp_from_pres(P_t_plenum[-1]))
 				h_sp_plenum.append( h_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000)
 
 				# Now let's determine the quality
@@ -568,16 +576,8 @@ for gas_type in gas_types:
 
 				list_of_qual_plenum.append(1 - ((h_v_sat - h_sp_plenum[-1]/1000) / enth_of_sub))
 
-
-			list_of_P_fg_t.append(fg_pres_from_temp(T_from_ru))		# Track the phase change pressure at given temperature
-			list_of_T_fg_t.append(fg_temp_from_pres(P_from_ru))		# Track the phase change temperature at given pressure
-
-			# Here is where you should check the phase based on rho and u
-			# i.e. "if rho < phase_line and u < phase_line, then check quality"
-
-
-
-			# I'd like a third function to determine quality based on the aforementioned parameters.
+				P_fg_t = fg_pres_from_temp(T_t_plenum[-1])															# Track the phase change pressure at given temperature
+				T_fg_t = fg_temp_from_pres(P_t_plenum[-1])															# Track the phase change temperature at given pressure
 
 		elif process == 'isothermal':
 			# Isothermal process in plenum
@@ -585,7 +585,10 @@ for gas_type in gas_types:
 			T_t_plenum.append( T_t_init )
 			P_t_plenum.append( P_from_rT_func(rho_t_plenum[-1], T_t_plenum[-1])[0]*1000000 )
 			u_sp_plenum.append( u_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000 )
-			list_of_h_sp.append( h_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000 )
+			h_sp_plenum.append( h_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000 )
+			P_fg_t = fg_pres_from_temp(T_t_plenum[-1])															# Track the phase change pressure at given temperature
+			T_fg_t = fg_temp_from_pres(P_t_plenum[-1])															# Track the phase change temperature at given pressure
+			list_of_qual_plenum.append(1)
 
 		elif process == 'isentropic':
 			# Isentropic process in plenum
@@ -593,22 +596,30 @@ for gas_type in gas_types:
 			P_t_plenum.append( P_t_plenum[-1]*(rho_t_plenum[-1]/rho_t_plenum[-2])**k )
 			T_t_plenum.append( T_t_plenum[-1]*(rho_t_plenum[-1]/rho_t_plenum[-2])**(k-1) )
 			u_sp_plenum.append( u_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000 )
-			list_of_h_sp.append( h_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000 )
+			h_sp_plenum.append( h_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000 )
+			P_fg_t = fg_pres_from_temp(T_t_plenum[-1])															# Track the phase change pressure at given temperature
+			T_fg_t = fg_temp_from_pres(P_t_plenum[-1])															# Track the phase change temperature at given pressure
+			list_of_qual_plenum.append(1)
 
 		elif process == 'isenthalpic':
 			# Isenthalpic process in plenum
 			process_label = 'Isenthalpic'
-			list_of_h_sp.append( h_sp_init )
-			P_from_rh = P_from_rh_func(rho_t_plenum[-1], list_of_h_sp[-1]/1000)[0]*1000000
-			T_from_rh = T_from_rh_func(rho_t_plenum[-1], list_of_h_sp[-1]/1000)[0]
+			h_sp_plenum.append( h_sp_init )
+			P_from_rh = P_from_rh_func(rho_t_plenum[-1], h_sp_plenum[-1]/1000)[0]*1000000
+			T_from_rh = T_from_rh_func(rho_t_plenum[-1], h_sp_plenum[-1]/1000)[0]
 			P_t_plenum.append(P_from_rh)
 			T_t_plenum.append(T_from_rh)
 			u_sp_plenum.append( u_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000 )
+			P_fg_t = fg_pres_from_temp(T_t_plenum[-1])															# Track the phase change pressure at given temperature
+			T_fg_t = fg_temp_from_pres(P_t_plenum[-1])															# Track the phase change temperature at given pressure
+			list_of_qual_plenum.append(1)
 		
 		else:
 			print('No state transition process defined!')
 			break
-
+		
+		list_of_P_fg_t.append(P_fg_t)
+		list_of_T_fg_t.append(T_fg_t)
 
 		time.append((i+1)*time_step)  # The first iteration is at t=0, so the first time[] entry will be 0.
 
@@ -782,8 +793,8 @@ for gas_type in gas_types:
 	ax.set_ylabel(r'Pressure, $Pa$')
 	ax.set(yscale="log")
 	if gas_type == 'CO2':
-		ax.set_xlim([135, 280])
-		ax.set_ylim([3000, 2000000])
+		ax.set_xlim([160, 280])
+		ax.set_ylim([25000, 1500000])
 
 	# Change tick formatting to make it look nicer
 	ax.xaxis.label.set_size(8)
@@ -840,10 +851,10 @@ for gas_type in gas_types:
 	handles = handles[-1:] + handles[:-1]					# Move the last handle to the beginning
 	ax.legend(legend, handles, loc='upper left')			# Make a new legend with the modified handles
 
-	ax.text(405, 6, 'Vapor Phase', style='italic',
-        bbox={'facecolor': 'red', 'alpha': 0.4, 'pad': 7})
-	ax.text(360, 8, 'Two-Phase Solid/Vapor', style='italic',
-        bbox={'facecolor': 'red', 'alpha': 0.4, 'pad': 7})
+	ax.text(405, 6.5, 'Vapor Phase', style='italic',
+        bbox={'facecolor': 'red', 'alpha': 0.2, 'pad': 7})
+	ax.text(348, 6.5, 'Two-Phase Solid/Vapor', style='italic',
+        bbox={'facecolor': 'red', 'alpha': 0.2, 'pad': 7})
 
 	plt.show()
 
@@ -871,12 +882,12 @@ data = 	{
 			# 'mu_t':				all_data['mu_t'],
 			# 'h_sp':				all_data['h_sp'],
 			# 'u_sp':				all_data['u_sp'],
-			'X':				all_data['X'],
+			# 'X':				all_data['X'],
 
-			# 'Re_up':			all_data['Re_up'],
+			'Re_up':			all_data['Re_up'],
 			# 'Nu_up':			all_data['Nu_up'],
 			# 'Pr_up':			all_data['Pr_up'],
-			# 'visc_up':			all_data['visc_up'],
+			'visc_up':			all_data['visc_up'],
 
 			# 'P_t_in': 			all_data['P_t_in'],
 			# 'T_t_in': 			all_data['T_t_in'],
@@ -887,7 +898,7 @@ data = 	{
 			# 'P_star': 		all_data['P_star'],
 			# 'T_star': 		all_data['T_star'],
 			# 'rho_star': 		all_data['rho_star'],
-			'Re_star': 		all_data['Re_star'],
+			# 'Re_star': 		all_data['Re_star'],
 			# 'M_star': 			all_data['M_star'],
 			# 'v_star': 			all_data['v_star'],
 
