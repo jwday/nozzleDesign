@@ -26,12 +26,12 @@ m_brass	= 70 / 1000				# Mass brass, kg
 cp_brass = 380					# Specific heat capacity of brass, J/kg-K
 cutoff_cond = 0.0001			# Cutoff condition, defined by the fractional change in pressure (relative to P_t_init) per second, units of 1/sec
 figsize = (6.5, 3)				# Figure size (in)
-dpi = 150						# Figure dpi
+dpi = 300						# Figure dpi
 fudge_factor = 1
 
 # Choose state transition process. 'mass-energy-balance', 'isentropic', 'isenthalpic', 'isothermal'
-process = 'mass-energy-balance'
-# process = 'isentropic'
+# process = 'mass-energy-balance'
+process = 'isentropic'
 
 # Include thermal model?
 thermal_model = True
