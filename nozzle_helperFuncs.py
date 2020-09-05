@@ -73,7 +73,7 @@ def create_phase_funcs(fluid_props, P_trip, T_trip):
 	phase_data = pd.concat([phase_data, pd.DataFrame({'Temperature (K)': xnew_lv, 'Pressure (Pa)':ynew_lv, 'Phase':'Liquid-Vapor Coexistence', 'Dataset':'Extrapolated'})], ignore_index=True)
 
 	# Solid-Vapor Phase Change Line
-	xnew_sv = np.arange(min(saturated_temp)-10, T_trip, 1)
+	xnew_sv = np.arange(min(saturated_temp)-169, T_trip, 1)
 	ynew_sv = [saturated_pres_from_temp(x) for x in xnew_sv]
 	phase_data = pd.concat([phase_data, pd.DataFrame({'Temperature (K)': xnew_sv, 'Pressure (Pa)':ynew_sv, 'Phase':'Solid-Vapor Coexistence', 'Dataset':'Extrapolated'})], ignore_index=True)
 
@@ -232,6 +232,8 @@ def create_h_from_PT_gas_func(fluid_props):
 
 # --------------------------------------------------------------------------------
 # Create a NEW 2D function to return internal energy of a fluid at a given (P,T) based on NIST data and using linear interpolation
+# Oh snap this might only be valid for single-phase substances
+# In fact, that must be true because a phase change occurs at a fixed P-T for varying u
 def create_u_from_PT_gas_func(fluid_props):
 	u_sp_data = pd.DataFrame(columns=['Temperature (K)'])
 	pressures = []		
@@ -246,7 +248,7 @@ def create_u_from_PT_gas_func(fluid_props):
 		else:
 			pass
 
-	start = 100
+	start = 0
 	stop = u_sp_data['Temperature (K)'].iloc[-1]
 	step = u_sp_data['Temperature (K)'].diff().median()
 	extrap_range = np.arange(start, stop, step)																					# Temperature range over which to extrapolate (pressure range is already okay, no need to extrapolate below 100 KPa)
@@ -318,12 +320,14 @@ def create_r_from_PT_gas_func(fluid_props):
 	for pres in r_data.columns[1:]:
 		r_data_slice = r_data[['Temperature (K)', pres]].dropna()															# Get the values over the range you wish to use as the basis for your interpolation (and drop NaNs)
 		if not r_data_slice.empty:
-			# f = interp1d(r_data_slice['Temperature (K)'], r_data_slice[pres].apply(np.log), kind='linear', fill_value='extrapolate')			# Make your interpolation function, first applying np.log() to all the values to make the extrapolation function from
-			slope, intercept, r_value, p_value, std_err = stats.linregress(r_data_slice['Temperature (K)'].values, r_data_slice[pres].apply(np.log).values)
-			def f(x):																											# Make your interpolation function, first applying np.log() to all the values to make the extrapolation function from
-				return (slope*x + intercept)
+			# f = interp1d(r_data_slice['Temperature (K)'], r_data_slice[pres].apply(np.log), kind='linear', fill_value='extrapolate')							# Make your interpolation function, first applying np.log() to all the values to make the extrapolation function from
+			# slope, intercept, r_value, p_value, std_err = stats.linregress(r_data_slice['Temperature (K)'].values, r_data_slice[pres].apply(np.log).values)
+			p = np.polyfit(r_data_slice['Temperature (K)'].apply(np.log).values, r_data_slice[pres].apply(np.log).values, 2)
+			def f(x):
+				x = np.log(x)																											# Make your interpolation function, first applying np.log() to all the values to make the extrapolation function from
+				return np.exp(p[0]*x**2 + p[1]*x + p[2])
 
-			r_data_fill = pd.DataFrame({'Temperature (K)': extrap_range, pres: np.exp(f(extrap_range))})							# Extrapolate over the range using said interp1d function
+			r_data_fill = pd.DataFrame({'Temperature (K)': extrap_range, pres: f(extrap_range)})							# Extrapolate over the range using said interp1d function
 			r_data_new = r_data_new.merge(r_data_fill, how='outer', on='Temperature (K)')
 	r_from_PT = interp2d(pressures[:len(r_data_new.columns)-1], r_data_new['Temperature (K)'].values, r_data_new.iloc[:,1:].values)
 	return r_from_PT
@@ -532,7 +536,7 @@ def create_P_from_rT_gas_func(fluid_props):
 
 
 
-def check_ru_phase(rho, u, phase_data):
+def check_ru_phase(rho, u, phase_data, P_from_ru_func, T_from_ru_func, P_trip, T_trip):
 	# Given a rho, what is the corresponding u that would constitute a phase change?
 	idx_of_closest_under = abs(phase_data[phase_data['Density, v (kg/m^3)'] < rho]['Density, v (kg/m^3)'] - rho).idxmin()
 	idx_of_closest_over = abs(phase_data[phase_data['Density, v (kg/m^3)'] > rho]['Density, v (kg/m^3)'] - rho).idxmin()
@@ -560,9 +564,18 @@ def check_ru_phase(rho, u, phase_data):
 
 	if rho < rho_crrspnd_to_u and u > u_crrspnd_to_rho:
 		phase = 'vapor'
-		# quality = 1
 	elif rho > rho_crrspnd_to_u or u < u_crrspnd_to_rho:
-		phase = 'solid-vapor two-phase'
+		# Is it above or below the triple point?
+		# Need a PT from ru function. Don't I already have one?
+		# YES I DO!
+		P_from_ru = P_from_ru_func(rho, u)[0]*1000000
+		T_from_ru = T_from_ru_func(rho, u)[0]
+		if P_from_ru < P_trip and T_from_ru < T_trip:
+			phase = 'solid-vapor two-phase'
+		elif P_from_ru > P_trip and T_from_ru > T_trip:
+			phase = 'liquid-vapor two-phase'
+		else:
+			phase = 'what!?'
 
 		# Temperature (used to estimate Enthalpy of Sublimation)
 		# T_y1 = phase_data['Temperature (K)'].iloc[idx_of_closest_under]

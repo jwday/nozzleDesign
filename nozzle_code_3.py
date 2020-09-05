@@ -5,6 +5,7 @@ import sys
 import math
 import pandas as pd
 import scipy.optimize as opti
+from scipy.interpolate import interp1d
 from scipy.interpolate import interp2d
 
 def nozzle(k, R, M_crit_sub, M_crit_sup, P_t, T_t, rho_t, P_amb, d_star, expansion_ratio, half_angle, gas_type, visc_func, r_from_PT):
@@ -59,14 +60,21 @@ def nozzle(k, R, M_crit_sub, M_crit_sup, P_t, T_t, rho_t, P_amb, d_star, expansi
 		rho_exit = (P_exit*(rho_t**k)/P_t)**(1/k) 	# Units of kg/m^3
 		m_dot = Z*rho_exit*A_exit*v_exit  			# Units of kg/s
 
-		def objective2(X):
-			f = m_dot - (A_star*P_t/math.sqrt(T_t)) * math.sqrt(k/R) * np.sqrt(X) * (1 + L*X)**(-Q/2)
-			return f
-		x0 = np.array([0.00001])
-		sol0 = opti.fsolve(objective2, x0, maxfev=100000, full_output=False, xtol=0.000000001)
-		M_star = sol0[0]
+		area = []
+		machs = list(np.linspace(0, 1, 100))
+		for mach in machs:
+			area.append(m_dot / ( (P_t/np.sqrt(T_t)) * np.sqrt(k/R) * mach * (1 + L*(mach**2))**(-Q/2) ))
+		subsonic_mach_from_area = interp1d(area, machs)
+
+		# def objective2(X):
+		# 	f = m_dot - (A_star*P_t/math.sqrt(T_t)) * math.sqrt(k/R) * np.sqrt(X) * (1 + L*X)**(-Q/2)
+		# 	return f
+		# x0 = np.array([0.00001])
+		# sol0 = opti.fsolve(objective2, x0, maxfev=100000, full_output=False, xtol=0.000000001)
+		# M_star = np.sqrt(sol0[0])
+		M_star = subsonic_mach_from_area(A_star)
 		flow_is_supersonic_flag = False
-		flow_regime = 'subsonic'
+		flow_regime = 'Subsonic'
 		
 
 	## ----------------------------------------------------------------------------------
@@ -100,19 +108,19 @@ def nozzle(k, R, M_crit_sub, M_crit_sup, P_t, T_t, rho_t, P_amb, d_star, expansi
 			M_just_before_shock = np.sqrt(sol2[0])
 			area_ratio_at_shock = area_ratio(M_just_before_shock)
 			shock_in_nozzle_flag = True
-			flow_regime = 'normal shock in nozzle'
+			flow_regime = 'Normal Shock in Nozzle'
 
 		# Case 2b: Shock occurs exactly at nozzle exit. Exit pressure = ambient and exit flow is subsonic.
 		elif P_amb/P_t == PR_exit_shock:
 			M_exit = M_exit_behindshock
 			P_exit = P_amb
-			flow_regime = 'normal shock at exit'
+			flow_regime = 'Normal Shock'
 
 		# Case 2c: Shock occurs just outside the nozzle. Exit pressure < ambient and exit flow is supersonic.
 		elif P_amb/P_t < PR_exit_shock:
 			M_exit = M_crit_sup
 			P_exit = pres_ratio(M_exit)*P_t
-			flow_regime = 'weak shock outside'
+			flow_regime = 'Overexpanded'
 
 		# Catch-all. Probably logically redundant. 
 		else:
@@ -126,7 +134,7 @@ def nozzle(k, R, M_crit_sub, M_crit_sup, P_t, T_t, rho_t, P_amb, d_star, expansi
 		M_star = 1
 		M_exit = M_crit_sup
 		P_exit = P_amb
-		flow_regime = 'perfectly expanded'
+		flow_regime = 'Perfectly Expanded'
 
 
 	## ----------------------------------------------------------------------------------
@@ -137,7 +145,7 @@ def nozzle(k, R, M_crit_sub, M_crit_sup, P_t, T_t, rho_t, P_amb, d_star, expansi
 		M_star = 1
 		M_exit = M_crit_sup
 		P_exit = pres_ratio(M_exit)*P_t
-		flow_regime = 'underexpanded'
+		flow_regime = 'Underexpanded'
 
 
 	## ----------------------------------------------------------------------------------
@@ -152,7 +160,7 @@ def nozzle(k, R, M_crit_sub, M_crit_sup, P_t, T_t, rho_t, P_amb, d_star, expansi
 		v_exit = 0
 		rho_exit = rho_t
 		flow_is_supersonic_flag = False
-		flow_regime = 'no flow'
+		flow_regime = 'No Flow'
 
 
 
