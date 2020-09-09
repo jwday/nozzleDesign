@@ -26,7 +26,7 @@ T_wall = 293					# Valve brass body wall tempertaure used to evaluate heat trans
 m_brass	= 70 / 1000				# Mass brass, kg
 cp_brass = 380					# Specific heat capacity of brass, J/kg-K
 
-figsize = (6, 3.5)				# Figure size (in)
+figsize = (6, 5)				# Figure size (in)
 dpi = 150						# Figure dpi
 fudge_factor = 1
 half_angle_conv = 110/2
@@ -46,16 +46,11 @@ thermal_model = True
 class ScalarFormatterForceFormat(mpl.ticker.ScalarFormatter):
 		def _set_format(self):  # Override function that finds format to use.
 			self.format = "%1.1f"  # Give format here
-yfmt = ScalarFormatterForceFormat()
-yfmt.set_powerlimits((0,0))
-# sns.set()
 sns.axes_style("white")
 sns.set_style("whitegrid", {"xtick.major.size": 0, "ytick.major.size": 0, 'grid.linestyle': '--'})
 sns.set_context("paper", font_scale = 1, rc={"grid.linewidth": .5})
 # sns.set_palette("colorblind")
 # default_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-
-
 
 
 
@@ -563,7 +558,7 @@ for gas_type in gas_types:
 			v_upstream = M_sub_upstream*np.sqrt(k*R*T_upstream)										# m/s
 
 			# dE_dt = m_dot*(h_upstream + (v_upstream**2)/2)										# J/s
-			dE_dt = m_dot*(h_sp_plenum[-1])				# J/s, what if we did this instead? Basically assume that the enthalpy is the same for the gas leaving the volume...?
+			dE_dt = m_dot*(h_sp_plenum[-1])				# J/s, what if we did this instead? Basically assume that the enthalpy is the same for the gas leaving the volume? It makes almost no difference because the velocity component of enthalpy is extremely small (it's like Mach 0.15, so...)
 			delta_E = dE_dt*time_step																
 
 			u_sp_plenum.append( ((u_sp_plenum[-1]*m_gas[-2]) - delta_E)/m_gas[-1] )
@@ -571,9 +566,9 @@ for gas_type in gas_types:
 			P_from_ru = P_from_ru_func(rho_t_plenum[-1], u_sp_plenum[-1]/1000)[0]*1000000
 			P_t_plenum.append(P_from_ru)
 
-			# It is at this point that you must check the phase of the propellent
-			phase = check_ru_phase(rho_t_plenum[-1], u_sp_plenum[-1]/1000, phase_data, P_from_ru_func, T_from_ru_func, P_trip, T_trip)
-			if phase == 'vapor':
+			# It is at this point that you must check the phase of the propellent in the plenum
+			plenum_phase = check_ru_phase(rho_t_plenum[-1], u_sp_plenum[-1]/1000, phase_data, P_from_ru_func, T_from_ru_func, P_trip, T_trip)
+			if plenum_phase == 'vapor':
 				T_from_ru = T_from_ru_func(rho_t_plenum[-1], u_sp_plenum[-1]/1000)[0]
 				T_t_plenum.append(T_from_ru)
 				list_of_qual_plenum.append(1)
@@ -609,6 +604,8 @@ for gas_type in gas_types:
 
 				P_fg_t = fg_pres_from_temp(T_t_plenum[-1])															# Track the phase change pressure at given temperature
 				T_fg_t = fg_temp_from_pres(P_t_plenum[-1])															# Track the phase change temperature at given pressure
+
+
 
 		elif process == 'isothermal':
 			# Isothermal process in plenum
@@ -802,8 +799,10 @@ for gas_type in gas_types:
 	current_data['gas_type'] = gas_type
 	current_data['P_trip'] = P_trip
 	current_data['T_trip'] = T_trip
-	idx_drop = current_data[current_data['flow regimes'] == 'No Flow'].index[0]
-	current_data.drop(idx_drop, inplace=True)
+
+	if not current_data[current_data['flow regimes'] == 'No Flow'].empty:
+		idx_drop = current_data[current_data['flow regimes'] == 'No Flow'].index[0]
+		current_data.drop(idx_drop, inplace=True)
 
 	all_data = all_data.append(current_data, ignore_index=True)
 
@@ -820,21 +819,27 @@ for gas_type in gas_types:
 
 	# Plot phase data
 	sns.scatterplot(ax=ax, x='Temperature (K)', y='Pressure (Pa)', palette='colorblind', data=phase_data[phase_data['Dataset']=='NIST Data'], hue='Dataset', zorder=10)
-	sns.lineplot(ax=ax, x='Temperature (K)', y='Pressure (Pa)', palette='colorblind', data=phase_data[phase_data['Dataset']=='Extrapolated'], style='Phase', hue='Phase')
+	sns.lineplot(ax=ax, x='Temperature (K)', y='Pressure (Pa)', palette='colorblind', data=phase_data[phase_data['Dataset']=='Extrapolated'], hue='Phase')
 
-	# Plot P-T path
-	sim_flow = current_data[current_data['flow regimes'].isin(['Underexpanded', 'Overexpanded', 'Normal Shock', 'Normal Shock in Nozzle', 'Subsonic'])][['P_t', 'T_t']]
-	ax.plot(sim_flow['T_t'], sim_flow['P_t'], label='Plenum P-T Path', linestyle='-.', linewidth=2.5, color='black')
-	ax.plot(sim_flow['T_t'][0], sim_flow['P_t'][0], 'o', fillstyle='none', label='Start', markersize=6, markeredgewidth=2)
-	ax.plot(sim_flow['T_t'][-1:], sim_flow['P_t'][-1:], 'x', label='Finish', markersize=6, markeredgewidth=2, zorder=20)
+	# Plot Plenum and Nozzle Exit P-T path
+	sim_flow = current_data[current_data['flow regimes'].isin(['Underexpanded', 'Overexpanded', 'Normal Shock', 'Normal Shock in Nozzle', 'Subsonic'])][['P_t', 'T_t', 'P_exit', 'T_exit']]
+	ax.plot(sim_flow['T_t'], sim_flow['P_t'], label='Plenum P-T Path', linestyle='--', color='orange')
+	# ax.plot(sim_flow['T_exit'], sim_flow['P_exit'], label='Exit P-T Path', linestyle='-.', color='crimson')
+
+	ax.plot(sim_flow['T_t'][0], sim_flow['P_t'][0], 'o', fillstyle='none', label='Start',markeredgecolor='green')
+	ax.plot(sim_flow['T_t'][-1:], sim_flow['P_t'][-1:], 'x', label='Finish', zorder=20, markeredgecolor='red')
+
+	# ax.plot(sim_flow['T_exit'][0], sim_flow['P_exit'][0], 'o', fillstyle='none', markeredgecolor='green')
+	# ax.plot(sim_flow['T_exit'][-1:], sim_flow['P_exit'][-1:], 'x', zorder=20, markeredgecolor='red')
 	
-	if gas_type == 'CO2':
-		ax.set_xlim([180, 280])
-		ax.set_ylim([50000, 1500000])
 
-		ax.text(188, 4.5E5, 'Solid Phase', style='italic', fontsize=7,
+	if gas_type == 'CO2':
+		ax.set_xlim([160, 280])
+		ax.set_ylim([80000, 1000000])
+
+		ax.text(185, 4.5E5, 'Solid Phase', style='italic', fontsize=7,
 			bbox={'facecolor': 'red', 'alpha': 0.2, 'pad': 5})
-		ax.text(213, 1.2E5, 'Vapor Phase', style='italic', fontsize=7,
+		ax.text(215, 1.2E5, 'Vapor Phase', style='italic', fontsize=7,
 			bbox={'facecolor': 'red', 'alpha': 0.2, 'pad': 5})
 
 	if gas_type == 'R134a':
@@ -846,6 +851,8 @@ for gas_type in gas_types:
 	ax.yaxis.grid(True, which='major')
 
 	# Change tick formatting to make it look nicer
+	yfmt = ScalarFormatterForceFormat()
+	yfmt.set_powerlimits((0,0))
 	ax.xaxis.label.set_size(8)
 	ax.tick_params(axis='x', labelsize=7, pad=0)
 	ax.tick_params(axis='y', labelsize=7, pad=0)
@@ -875,8 +882,6 @@ for gas_type in gas_types:
 	# Create a plot of u vs. rho to identify point of phase transition
 	fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
 	ax.set_title(r'Plenum $\rho$-u Path ({})'.format(gas_label, process_label))
-	ax.set_xlabel(r'Internal Energy, $kJ/kg$')
-	ax.set_ylabel(r'Density, $kg/m^3$')
 	# ax.set(yscale="log")
 
 	# Plot phase data
@@ -893,15 +898,19 @@ for gas_type in gas_types:
 	ax.xaxis.label.set_size(8)
 	ax.tick_params(axis='x', labelsize=6, pad=0)
 	ax.tick_params(axis='y', labelsize=6, pad=0)
+	yfmt = ScalarFormatterForceFormat()
+	yfmt.set_powerlimits((0,0))
 	ax.yaxis.set_major_formatter(yfmt)
 	ax.yaxis.offsetText.set_fontsize(6)
 	ax.ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
+	ax.set_xlabel(r'Internal Energy, $kJ/kg$')				# Gotta do it here because sns.lineplot takes over the formatting if you do it before. I think.
+	ax.set_ylabel(r'Density, $kg/m^{3}$')
 	
 	legend, handles = ax.get_legend_handles_labels()		# Get the legend and hadles so we can modify them
 
 	if gas_type == 'CO2':
-		ax.set_xlim([345, 430])
-		ax.set_ylim([3, 17])
+		ax.set_xlim([350, 430])
+		ax.set_ylim([2, 17])
 
 		handles[1] = 'Saturated Vapor-Solid Boundary'
 		handles[2] = 'Saturated Liquid Boundary'
@@ -911,9 +920,9 @@ for gas_type in gas_types:
 		handles = handles[-1:] + handles[:-1]					# Move the last handle to the beginning
 		ax.legend(legend, handles, loc='upper left')			# Make a new legend with the modified handles
 
-		ax.text(405, 6.5, 'Vapor Phase', style='italic',
+		ax.text(408, 6.5, 'Vapor Phase', style='italic',
 			bbox={'facecolor': 'red', 'alpha': 0.2, 'pad': 7})
-		ax.text(348, 6.5, 'Two-Phase Solid/Vapor', style='italic',
+		ax.text(354, 5.5, 'Two-Phase Solid/Vapor', style='italic',
 			bbox={'facecolor': 'red', 'alpha': 0.2, 'pad': 7})
 
 	if gas_type == 'R134a':
@@ -955,7 +964,7 @@ fontsize = 8
 
 data = 	{ 
 			# 'P_t': 				all_data['P_t'],
-			# 'T_t': 				all_data['T_t'],
+			'T_t': 				all_data['T_t'],
 			# 'rho_t':			all_data['rho_t'],
 			# 'mu_t':				all_data['mu_t'],
 			# 'h_sp':				all_data['h_sp'],
@@ -968,7 +977,7 @@ data = 	{
 			# 'visc_up':			all_data['visc_up'],
 
 			# 'P_t_in': 			all_data['P_t_in'],
-			# 'T_t_in': 			all_data['T_t_in'],
+			'T_t_in': 			all_data['T_t_in'],
 			# 'T_in': 			all_data['T_in'],
 			# 'T_wall':			all_data['T_wall'],
 			# 'M_in':				all_data['M_in'],
@@ -993,10 +1002,10 @@ data = 	{
 			# 'F_pdiff': 		all_data['F_pdiff'], 
 			# 'thrust': 		all_data['thrust'],
 			# 'thrust_coeff': 	all_data['thrust_coeff'],
-			'visc_losses': 		all_data['visc_loss'],
+			# 'visc_losses': 		all_data['visc_loss'],
 			# 'thrust_eff': 		all_data['thrust_eff'],
 			# 'avg_thrust': 	all_data['avg_thrust'],
-			'cum_impulse': 	all_data['cum_impulse'],
+			# 'cum_impulse': 	all_data['cum_impulse'],
 			# 'ISP': 			all_data['ISP'],
 			# 'ARs at shock':	all_data['area ratios at shock']
 
@@ -1224,17 +1233,42 @@ titles = {
 		 }
 
 
-# Just some formatting stuff 
-class ScalarFormatterForceFormat(mpl.ticker.ScalarFormatter):
-		def _set_format(self):  # Override function that finds format to use.
-			self.format = "%1.1f"  # Give format here
+
+# Only looking at temperatures on same graph
+for gas in gas_types:
+	fig, ax = plt.subplots(1,1, figsize=(6,3)), dpi=300)
+	fig.suptitle('{} and {}'.format(figname[list(data.keys())[0]], figname[list(data.keys())[1]]), y=0.98)
+	ax.set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(all_parameters.loc[gas]['gas_label'], 273.15, all_parameters.loc[gas]['vol']*10**6, all_parameters.loc[gas]['d_star']*1000, all_parameters.loc[gas]['expansion_ratio']), fontsize=7)
+
+	styles=['-', '--']
+	for i, key in enumerate(data):
+		ax.plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas][key], label=figname[key], linestyle=styles[i])
+	
+	ax.set_ylabel(r'Temperature, $K$', color='#413839', fontsize=fontsize)
+	ax.set_xlim(left=0)
+	ax.legend()
+
+	# yfmt = ScalarFormatterForceFormat()
+	# yfmt.set_powerlimits((0,0))
+	# ax.yaxis.set_major_formatter(yfmt)
+	# ax.ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
+	ax.tick_params(axis='y', labelsize=6, pad=0)
+	ax.yaxis.offsetText.set_fontsize(6)
+
+	ax.tick_params(axis='x', labelsize=6, pad=0)
+	ax.xaxis.label.set_size(8)
+	ax.set(xlabel=r'Time $(sec)$')
+
+	plt.tight_layout()
+	plt.subplots_adjust(top=0.85)
+plt.show()
+
 
 # Let's see if we can plot exit pres & sat pres at exit on same plot, and also temp on another
-
 for gas in gas_types:
-	fig_sat, axs = plt.subplots(2,1, figsize=figsize, dpi=dpi, sharex=True)
+	fig_sat, axs = plt.subplots(3,1, figsize=figsize, dpi=dpi, sharex=True)
 	fig_sat.suptitle('{} and {}'.format(figname[list(data.keys())[0]], figname[list(data.keys())[1]]), y=0.98)
-	axs[0].set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(all_parameters.loc[gas]['gas_label'], all_parameters.loc[gas]['T_t_init'], all_parameters.loc[gas]['vol']*10**6, all_parameters.loc[gas]['d_star']*1000, all_parameters.loc[gas]['expansion_ratio']), fontsize=7)
+	axs[0].set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(all_parameters.loc[gas]['gas_label'], 273.15, all_parameters.loc[gas]['vol']*10**6, all_parameters.loc[gas]['d_star']*1000, all_parameters.loc[gas]['expansion_ratio']), fontsize=7)
 	fig_sat.canvas.set_window_title('Saturated Pressure Stuff')
 
 	for i, key in enumerate(data):
