@@ -18,11 +18,11 @@ import matplotlib.ticker as ticker
 ## ---- USER OPTIONS ----------------------------------------------------------------
 ## ==================================================================================
 
-gas_types = ['CO2']				# Gas choices: R236fa, R134a, N2, CO2, H2, air
+gas_types = ['CO2', 'R134a']				# Gas choices: R236fa, R134a, N2, CO2, H2, air
 								# Gas choice will determine geometry based on desired output that was determined in the course of this project
 d_upstream = 2 / 1000			# Upstream "pipe" diameter (really just the valve orifice diameter), units of m (mm / 1000)
 L_upstream = 40 / 1000			# Upstream "pipe length" aka path length through valve. Just an estimate.
-T_wall = 293					# Valve brass body wall tempertaure used to evaluate heat transfer conductivity
+T_wall_init = 293					# Valve brass body wall tempertaure used to evaluate heat transfer conductivity
 m_brass	= 70 / 1000				# Mass brass, kg
 cp_brass = 380					# Specific heat capacity of brass, J/kg-K
 
@@ -61,7 +61,7 @@ sns.set_context("paper", font_scale = 1, rc={"grid.linewidth": .5})
 
 # Set up Pandas DataFrame to store sim parameters
 all_parameters = pd.DataFrame(columns=[	'gas_type',
-										'gas_label',
+										'Propellant',
 										'P_t_init',
 										'P_amb',
 										'T_t_init',
@@ -125,9 +125,9 @@ for gas_type in gas_types:
 		fluid_props = pd.read_excel('CO2_props_NIST.xlsx', sheet_name=None)
 		fluid_props_vol = pd.read_excel('CO2_props_costVol_NIST.xlsx', sheet_name=None)
 
-		def visc_func(P,T):
-			f = 4.97025E-2*T + 1.337E-3
-			return np.array([f])
+		# def visc_func(P,T):
+		# 	f = 4.97025E-2*T + 1.337E-3
+		# 	return np.array([f])
 
 
 	elif gas_type == 'R134a':
@@ -150,7 +150,6 @@ for gas_type in gas_types:
 
 		fluid_props = pd.read_excel('R134a_props_NIST.xlsx', sheet_name=None)
 		fluid_props_vol = pd.read_excel('R134a_props_const_vol_NIST.xlsx', sheet_name=None)
-
 
 
 	fg_pres_from_temp, fg_temp_from_pres, phase_data = create_phase_funcs(fluid_props, P_trip, T_trip)
@@ -252,7 +251,7 @@ for gas_type in gas_types:
 	mu_t_inlet 		= []
 	M_inlet			= []
 
-	T_wall 			= [T_wall]
+	T_wall 			= [T_wall_init]
 	m_gas 			= [m_init]
 	list_of_mdots 	= []
 
@@ -312,8 +311,8 @@ for gas_type in gas_types:
 		return f
 
 	# Gnielinski correlation for estimating the Nusselt number
-	def nusseltGnielinski(Re, Pr, f):
-		Nu = (f/8)*(Re - 1000)*Pr / (1 + 12.7*np.sqrt(f/8)*(Pr**(2/3) - 1))
+	def nusseltGnielinski(Re, Pr, f, d_upstream, L_upstream, T_upstream, T_wall):
+		Nu = (f/8)*(Re - 1000)*Pr*(1 + (d_upstream/L_upstream)**(2/3))*((T_upstream/T_wall)**0.45) / (1 + 12.7*np.sqrt(f/8)*((Pr**(2/3)) - 1))
 		return Nu
 
 	# Isentropic flow relation
@@ -436,7 +435,7 @@ for gas_type in gas_types:
 			Pr_upstream.append(visc_upstream[-1] * cp_upstream / ktc_upstream)								# Prandtl number, though this stays almost entirely between 0.770 and 0.784, so maybe just used a fixed value...say, 0.777?
 
 			if Re_upstream[-1] >= 3000:
-				Nu_upstream.append( nusseltGnielinski(Re_upstream[-1], Pr_upstream[-1], f) )				# Use the Gnielinski correlation to calculate the Nusselt number
+				Nu_upstream.append( nusseltGnielinski(Re_upstream[-1], Pr_upstream[-1], f, d_upstream, L_upstream, T_upstream, T_wall[-1]) )				# Use the Gnielinski correlation to calculate the Nusselt number
 			else:
 				Nu_upstream.append(Nu_upstream[-1]*(list_of_mdots[-1]/list_of_mdots[-2]))					# Make the Nusselt number a linear function of mass flow rate
 
@@ -536,9 +535,11 @@ for gas_type in gas_types:
 
 
 		# --------------------------------------------------------------------------------
-		# Estimate viscous losses (based on Re)
+		# Estimate viscous losses (based on NASA TN-)
 		list_of_visc_losses.append(visc_loss_param/np.sqrt(Re_star*np.tan(np.deg2rad(half_angle))))
 		thrust_eff.append(CF-list_of_visc_losses[-1])
+
+
 	
 
 		# --------------------------------------------------------------------------------
@@ -679,7 +680,7 @@ for gas_type in gas_types:
 										half_angle,
 										expansion_ratio]],
 							columns=[	'gas_type',
-										'gas_label',
+										'Propellant',
 										'P_t_init',
 										'P_amb',
 										'T_t_init',
@@ -797,6 +798,7 @@ for gas_type in gas_types:
 									'P_fg_exit',
 									'T_fg_exit'])
 	current_data['gas_type'] = gas_type
+	current_data['Propellant'] = gas_label
 	current_data['P_trip'] = P_trip
 	current_data['T_trip'] = T_trip
 
@@ -810,7 +812,7 @@ for gas_type in gas_types:
 
 	# --------------------------------------------------------------------------------
 	# Create a plot of phase transition boundaries and overlay P-T path of propellant during discharge
-	fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
+	fig, ax = plt.subplots(1, 1, figsize=(6,3), dpi=dpi)
 	ax.set_title(r'Phase Diagram and Plenum P-T Path ({})'.format(process_label))
 	# ax.set_title(r'({} at $P_0$={} kPa, $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(gas_label, 791, 273, vol*10**6, d_star*1000, expansion_ratio), fontsize=7)
 	ax.set_xlabel(r'Temperature, $K$')
@@ -880,7 +882,7 @@ for gas_type in gas_types:
 
 	# --------------------------------------------------------------------------------
 	# Create a plot of u vs. rho to identify point of phase transition
-	fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
+	fig, ax = plt.subplots(1, 1, figsize=(6,3), dpi=dpi)
 	ax.set_title(r'Plenum $\rho$-u Path ({})'.format(gas_label, process_label))
 	# ax.set(yscale="log")
 
@@ -963,13 +965,13 @@ linewidth = 2
 fontsize = 8
 
 data = 	{ 
-			# 'P_t': 				all_data['P_t'],
-			'T_t': 				all_data['T_t'],
+			'P_t': 				all_data['P_t'],
+			# 'T_t': 				all_data['T_t'],
 			# 'rho_t':			all_data['rho_t'],
 			# 'mu_t':				all_data['mu_t'],
 			# 'h_sp':				all_data['h_sp'],
 			# 'u_sp':				all_data['u_sp'],
-			# 'X':				all_data['X'],
+			'X':				all_data['X'],
 
 			# 'Re_up':			all_data['Re_up'],
 			# 'Nu_up':			all_data['Nu_up'],
@@ -977,7 +979,7 @@ data = 	{
 			# 'visc_up':			all_data['visc_up'],
 
 			# 'P_t_in': 			all_data['P_t_in'],
-			'T_t_in': 			all_data['T_t_in'],
+			# 'T_t_in': 			all_data['T_t_in'],
 			# 'T_in': 			all_data['T_in'],
 			# 'T_wall':			all_data['T_wall'],
 			# 'M_in':				all_data['M_in'],
@@ -1234,15 +1236,45 @@ titles = {
 
 
 
+# --------------------------------------------------------------------------------
+# Let's plot Re of both gasses on one figure with two subplots of differing time scales and make sure you include ax.set_titles
+fig, ax = plt.subplots(2,1, figsize=(6, 4.5), dpi=300)
+fig.suptitle(r'Throat Reynolds Number for CO$_2$ and R134a', y=0.95)
+for i, gas in enumerate(gas_types):
+	ax[i].set_title(r'{} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={}'.format(all_parameters.loc[gas]['Propellant'], 273.15, all_parameters.loc[gas]['vol']*10**6, all_parameters.loc[gas]['d_star']*1000, all_parameters.loc[gas]['expansion_ratio']), fontsize=7)
+	ax[i].plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas]['Re_star'])
+	ax[i].set_ylabel(r'Reynolds No. ({})'.format(all_parameters.loc[gas]['Propellant']), color='#413839', fontsize=fontsize)
+	ax[i].set_xlim(left=0)
+
+	yfmt = ScalarFormatterForceFormat()
+	yfmt.set_powerlimits((0,0))
+	ax[i].yaxis.set_major_formatter(yfmt)
+	ax[i].ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
+	ax[i].tick_params(axis='y', labelsize=6, pad=0)
+	ax[i].yaxis.offsetText.set_fontsize(6)
+
+	ax[i].tick_params(axis='x', labelsize=6, pad=0)
+
+ax[1].xaxis.label.set_size(8)
+ax[1].set(xlabel=r'Time $(sec)$')
+
+plt.tight_layout()
+plt.subplots_adjust(top=0.85)
+plt.show()
+
+
+
+# --------------------------------------------------------------------------------
 # Only looking at temperatures on same graph
 for gas in gas_types:
-	fig, ax = plt.subplots(1,1, figsize=(6,3)), dpi=300)
-	fig.suptitle('{} and {}'.format(figname[list(data.keys())[0]], figname[list(data.keys())[1]]), y=0.98)
-	ax.set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(all_parameters.loc[gas]['gas_label'], 273.15, all_parameters.loc[gas]['vol']*10**6, all_parameters.loc[gas]['d_star']*1000, all_parameters.loc[gas]['expansion_ratio']), fontsize=7)
+	fig, ax = plt.subplots(1,1, figsize=(6,3), dpi=300)
+	fig.suptitle('Valve Upstream and Downstream Flow Total Temperatures', y=0.98)
+	ax.set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(all_parameters.loc[gas]['Propellant'], 273.15, all_parameters.loc[gas]['vol']*10**6, all_parameters.loc[gas]['d_star']*1000, all_parameters.loc[gas]['expansion_ratio']), fontsize=7)
 
-	styles=['-', '--']
+	temp_styles=['-', '--']
+	temp_labels=['Upstream flow', 'Downstream flow']
 	for i, key in enumerate(data):
-		ax.plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas][key], label=figname[key], linestyle=styles[i])
+		ax.plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas][key], label=temp_labels[i], linestyle=temp_styles[i])
 	
 	ax.set_ylabel(r'Temperature, $K$', color='#413839', fontsize=fontsize)
 	ax.set_xlim(left=0)
@@ -1264,11 +1296,13 @@ for gas in gas_types:
 plt.show()
 
 
+
+# --------------------------------------------------------------------------------
 # Let's see if we can plot exit pres & sat pres at exit on same plot, and also temp on another
 for gas in gas_types:
-	fig_sat, axs = plt.subplots(3,1, figsize=figsize, dpi=dpi, sharex=True)
+	fig_sat, axs = plt.subplots(2,1, figsize=figsize, dpi=dpi, sharex=True)
 	fig_sat.suptitle('{} and {}'.format(figname[list(data.keys())[0]], figname[list(data.keys())[1]]), y=0.98)
-	axs[0].set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(all_parameters.loc[gas]['gas_label'], 273.15, all_parameters.loc[gas]['vol']*10**6, all_parameters.loc[gas]['d_star']*1000, all_parameters.loc[gas]['expansion_ratio']), fontsize=7)
+	axs[0].set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(all_parameters.loc[gas]['Propellant'], 273.15, all_parameters.loc[gas]['vol']*10**6, all_parameters.loc[gas]['d_star']*1000, all_parameters.loc[gas]['expansion_ratio']), fontsize=7)
 	fig_sat.canvas.set_window_title('Saturated Pressure Stuff')
 
 	for i, key in enumerate(data):
@@ -1309,15 +1343,17 @@ for gas in gas_types:
 	plt.show()
 
 
+
+
 # --------------------------------------------------------------------------------
 # Compare the two gas types together on one plot and examine the flow regimes
-fig, axs = plt.subplots(1,1, figsize=figsize, dpi=dpi, sharex=True)
-fig.suptitle('Single Plenum Discharge, In-space vs. On-ground', y=0.98)
+fig, axs = plt.subplots(1,1, figsize=(6,3), dpi=300, sharex=True)
 fig.canvas.set_window_title('Nozzle Performance Metrics')
-axs.set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(gas_label, T_t_init, vol*10**6, d_star*1000, expansion_ratio), fontsize=7)
+fig.suptitle('Throat Reynolds No. for Single Plenum Discharge', y=1)
+axs.set_title('In-space vs. On-ground')
 
 key, value = list(data.items())[0]
-sns.lineplot(ax=axs, x=times[key], y=data[key], palette='colorblind', data=all_data, hue='flow regimes', style='gas_type', legend='full')
+sns.lineplot(ax=axs, x=times[key], y=data[key], palette='colorblind', data=all_data, style='Propellant', legend='full')
 
 axs.set_ylabel(ylabels[key], color='#413839', fontsize=fontsize)
 
@@ -1358,10 +1394,7 @@ fig_noz.suptitle('Flow Properties over Nozzle Length', y=0.98)
 fig_noz.canvas.set_window_title('Flow Properties over Nozzle Length')
 # axs[0, 0].set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(gas_label, T_t_init, vol*10**6, d_star*1000, expansion_ratio), fontsize=9)
 
-
-# --------------------------------------------------------------------------------
 # Iterate across length of nozzle to get spacial distribution of properties
-
 # Init 2D arrays
 mach_no_2D = []
 P_2D = []
@@ -1489,3 +1522,17 @@ axs[1, 1].set(xlabel=r'Nozzle Length, $mm$')
 axs[0, 0].set_ylim(bottom=-0.55, top=0.55)
 
 plt.show()
+
+
+
+# We're going to try estimating viscous losses now
+# mu_w = visc_func(list_of_P_stars[-1], T_wall[-1])				# Pseudo-wall viscosity (using throat Pressure and valve wall temperature)
+# mu_star = visc_func(list_of_P_stars[-1], list_of_T_stars[-1])	# Throat viscosity
+
+# f0 = gamma * np.sqrt( (mu_w/m_star) * (list_of_rho_stars[-1]/rho_t_inlet[-1]) * np.sqrt(list_of_T_stars[-1]/T_t_inlet[-1]) ) / np.sqrt( 2*(T_wall[-1]/T_t_inlet[-1]) )
+
+# for pos in np.range(0, length_nozzle, 100):
+# 	AR = area_ratio_at_pos(pos)
+# 	mach_no = supersonic_mach_anywhere(AR)
+# 	temp = T_t * (1 + L*mach_no**2)**-1
+# 	f1 = 1/np.sqrt(np.sqrt(AR)-1)
