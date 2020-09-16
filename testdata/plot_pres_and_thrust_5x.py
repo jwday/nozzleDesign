@@ -167,7 +167,7 @@ mdot_stdevs = data1.groupby('Set Point').std().drop(['Trial'], axis=1).sort_valu
 # This is ALL experimental data ONLY!!!!
 fig1, axs = plt.subplots(2, sharex=True, dpi=300, figsize=(6, 4))
 fig1.suptitle('Pressure & Thrust vs. Time for Steady-State Conditions', y=0.98, fontsize=10)
-axs[0].set_title(r'CO$_2$, Nozzle $\varnothing$0.6 mm, $\lambda$=1.17 (3$x$ Trials/Set Point)', fontsize=7, color='dimgray', y=1.03)
+axs[0].set_title(r'CO$_2$, Nozzle $\varnothing$0.6 mm, $\lambda$=1.34 (3$x$ Trials/Set Point)', fontsize=7, color='dimgray', y=1.03)
 
 sns.lineplot(ax=axs[0], x="Time (s)", y="Pressure (psig)", hue="Set Point", style="Set Point", data=all_float_data, ci='sd')
 sns.lineplot(ax=axs[1], x="Time (s)", y="Thrust (mN)", hue="Set Point", style="Set Point", data=all_thrust_data, ci='sd')
@@ -194,7 +194,7 @@ for ax in axs.flat:
 # Second one: (1) Thrust vs. Pressure (Isentropic + Experimental), (2) mdot vs. Pressure (Isentropic + Experimental)
 fig2, axs = plt.subplots(2, sharex=True, dpi=300, figsize=(6, 4))
 fig2.suptitle('Thrust & Mass Flow Rate vs. Pressure for Steady-State Conditions', y=0.98, fontsize=10)
-axs[0].set_title(r'CO$_2$, Nozzle $\varnothing$0.6 mm, $\lambda$=1.17 (3$x$ Trials/Set Point)', fontsize=7, color='dimgray', y=1.03)
+axs[0].set_title(r'CO$_2$, Nozzle $\varnothing$0.6 mm, $\lambda$=1.34 (3$x$ Trials/Set Point)', fontsize=7, color='dimgray', y=1.03)
 
 # ====== Plot (1): Thrust vs Pressure ============
 axs[0].legend()

@@ -10,7 +10,7 @@ import os
 
 
 def all_data(prefix):
-	data_float_psi = pd.read_csv('/home/josh/remoteProp/data/' + str(prefix + '_float_data.csv'), header=1)
+	data_float_psi = pd.read_csv('/home/josh/nozzleDesign/testdata/' + str(prefix + '_float_data.csv'), header=1)
 	data_float_psi.insert(2, "Float Pressure (psia)", [x+14.7 for x in data_float_psi["Float Pressure (psig)"]])
 	b, a = signal.butter(5, 0.5)
 	data_float_psi_filtered = signal.filtfilt(b, a, data_float_psi['Float Pressure (psig)'])
@@ -25,7 +25,7 @@ def all_data(prefix):
 	data_float_psi = pd.concat([data_float_psi, pd.DataFrame(np.transpose(np.array([tnew_float_psi, data_float_psi_resampled])), columns=['Time Resampled (s)', 'Float Pressure Resampled (psig)'])], axis=1)
 
 
-	data_prop_psi = pd.read_csv('/home/josh/remoteProp/data/' + str(prefix + '_prop_data.csv'), header=1)
+	data_prop_psi = pd.read_csv('/home/josh/nozzleDesign/testdata/' + str(prefix + '_prop_data.csv'), header=1)
 	data_prop_psi.insert(2, "Prop Pressure (psia)", [x+14.7 for x in data_prop_psi["Prop Pressure (psig)"]])
 	data_prop_psi_filtered = signal.filtfilt(b, a, data_prop_psi['Prop Pressure (psig)'])
 	data_prop_psi = pd.concat([data_prop_psi, pd.DataFrame(data_prop_psi_filtered, columns=['Prop Pressure Filtered (psig)'])], axis=1)
@@ -38,7 +38,7 @@ def all_data(prefix):
 	data_prop_psi = pd.concat([data_prop_psi, pd.DataFrame(np.transpose(np.array([tnew_prop_psi, data_prop_psi_resampled])), columns=['Time Resampled (s)', 'Prop Pressure Resampled (psig)'])], axis=1)
 
 
-	data_weight = pd.read_csv('/home/josh/remoteProp/data/' + str(prefix + '_loadcell_data.csv'), header=1)
+	data_weight = pd.read_csv('/home/josh/nozzleDesign/testdata/' + str(prefix + '_loadcell_data.csv'), header=1)
 	data_weight.insert(2, "Thrust (mN)", [x*9.81 for x in data_weight["Weight (?)"]])
 	b, a = signal.butter(3, 0.85)
 	data_weight_filtered = signal.filtfilt(b, a, data_weight['Thrust (mN)'])
@@ -57,7 +57,7 @@ def all_data(prefix):
 	data_weight = pd.concat([data_weight, pd.DataFrame(thrust_corrected, columns=['Thrust Corrected (mN)'])], axis=1)
 
 
-	# data_temp = pd.read_csv('/home/josh/remoteProp/data/' + str(prefix + '_temp_data.csv'), header=1)
+	# data_temp = pd.read_csv('/home/josh/nozzleDesign/testdata/' + str(prefix + '_temp_data.csv'), header=1)
 	# data_temp.insert(2, "Temperature (K)", [x+273.15 for x in data_temp["Exit Temperature (Celsius)"]])
 	# data_temp_filtered = signal.filtfilt(b, a, data_temp['Temperature (K)'])
 	# data_temp = pd.concat([data_temp, pd.DataFrame(data_temp_filtered, columns=['Temperature Filtered (K)'])], axis=1)

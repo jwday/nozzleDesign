@@ -19,6 +19,7 @@ def all_data(prefix, mult_by_g=False):
 	data_float_psi_resampled = signal.resample(data_float_psi['Float Pressure Filtered (psig)'], n_all_resampled)  # Resample the filtered psig data
 	tnew_float_psi = np.linspace(0, tmax_float_psi, data_float_psi_resampled.size)  # Shouldn't this be the same? Yeah it should be
 	data_float_psi = pd.concat([data_float_psi, pd.DataFrame(np.transpose(np.array([tnew_float_psi, data_float_psi_resampled])), columns=['Time Resampled (s)', 'Float Pressure Resampled (psig)'])], axis=1)
+	data_float_psi.insert(3, 'Float Pressure (kPa)', data_float_psi['Float Pressure (psia)'].multiply(6.8948))
 
 
 	data_prop_psi = pd.read_csv(str(prefix + '_prop_data.csv'), header=1)
@@ -32,6 +33,8 @@ def all_data(prefix, mult_by_g=False):
 	# data_prop_psi_resampled = signal.resample_poly(data_prop_psi['Prop Pressure (psig)'], 10, 9)
 	tnew_prop_psi = np.linspace(0, tmax_prop_psi, data_prop_psi_resampled.size)
 	data_prop_psi = pd.concat([data_prop_psi, pd.DataFrame(np.transpose(np.array([tnew_prop_psi, data_prop_psi_resampled])), columns=['Time Resampled (s)', 'Prop Pressure Resampled (psig)'])], axis=1)
+	data_prop_psi.insert(3, 'Prop Pressure (kPa)', data_prop_psi['Prop Pressure (psia)'].multiply(6.8948))
+
 
 	if mult_by_g: 
 		g = 9.81

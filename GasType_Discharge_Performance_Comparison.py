@@ -30,11 +30,11 @@ fudge_factor = 1
 half_angle_conv = 110/2
 
 # Choose state transition process. 'mass-energy-balance', 'isentropic', 'isenthalpic', 'isothermal'
-process = 'mass-energy-balance'
-# process = 'isentropic'
+# process = 'mass-energy-balance'
+process = 'isentropic'
 
 # Include thermal model?
-thermal_model = True
+thermal_model = False
 
 
 
@@ -69,28 +69,35 @@ all_parameters = pd.DataFrame(columns=[	'gas_type',
 										'expansion_ratio'])
 
 # Set up Pandas DataFrame to store aggregate data
-all_data = pd.DataFrame(columns=[	'time',
-									'P_t',
-									'T_t',
-									'rho_t',
-									'm_gas',
-									'mdot',
-									'P_exit',
-									'v_exit',
-									'M_exit',
-									'thrust',
-									'P_star',
-									'T_star',
-									'rho_star',
-									'Re_star',
-									'T_exit',
-									'rho_exit',
-									'CF_ideal',
-									'visc_loss',
-									'avg_thrust',
-									'cum_impulse',
-									'ISP',
-									'gas_type'])
+all_data = pd.DataFrame()
+# all_data = pd.DataFrame(columns=[	'time',
+# 									'gas_type',
+# 									'P_t_init',
+# 									'P_amb',
+# 									'T_t_init',
+									
+# 									'P_t',
+# 									'T_t',
+# 									'rho_t',
+# 									'm_gas',
+# 									'mdot',
+# 									'P_exit',
+# 									'v_exit',
+# 									'M_exit',
+# 									'thrust',
+# 									'P_star',
+# 									'T_star',
+# 									'rho_star',
+# 									'Re_star',
+# 									'T_exit',
+# 									'rho_exit',
+# 									'CF_ideal',
+# 									'visc_losses',
+# 									'avg_thrust',
+# 									'cum_impulse',
+# 									'ISP',
+# 									'gas_type'])
+
 sat_data = pd.DataFrame(['gas type', 'real temp', 'real pres', 'interpolated temp', 'interpolated pres'])
 all_supersonic_flow_regimes = ['Underexpanded', 'Perfectly Expanded', 'Overexpanded', 'Normal Shock']
 
@@ -102,6 +109,7 @@ for gas_type in gas_types:
 		P_t_init = 114.7 * 6894.76  	# Init Total Pressure, units of Pa (psia * 6894.76)
 		P_amb = 14.7 * 6894.76  		# Ambient Pressure, units of Pa (psia * 6894.76)
 		cutoff_cond = 0.0001			# Cutoff condition, defined by the fractional change in pressure (relative to P_t_init) per second, units of 1/sec
+		cutoff_time = 1.4
 		T_t_init = 0.317 + 273.15  			# Init Total Temperature, units of K (C + 273.15)
 		vol = 30 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
 		d_star = 0.6 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
@@ -133,12 +141,13 @@ for gas_type in gas_types:
 
 	elif gas_type == 'R134a':
 		gas_label = 'R134a'
-		P_t_init = 60 * 6894.76  		# Init Total Pressure, units of Pa (psia * 6894.76)
+		P_t_init = 82.9 * 6894.76  		# Init Total Pressure, units of Pa (psia * 6894.76)
 		P_amb = 0 * 6894.76  			# Ambient Pressure, units of Pa (psia * 6894.76)
-		cutoff_cond = 0.005				# Cutoff condition, defined by the fractional change in pressure (relative to P_t_init) per second, units of 1/sec
-		T_t_init = 20.03 + 273.15  		# Init Total Temperature, units of K (C + 273.15)
-		vol = 11.2 / 10**6  			# Plenum volume, units of m^3 (cm^3 / 10^6)
-		d_star = 0.212 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
+		cutoff_cond = 0.0001			# Cutoff condition, defined by the fractional change in pressure (relative to P_t_init) per second, units of 1/sec
+		cutoff_time = 28
+		T_t_init = 19.97+ 273.15  		# Init Total Temperature, units of K (C + 273.15)
+		vol = 10.0 / 10**6  			# Plenum volume, units of m^3 (cm^3 / 10^6)
+		d_star = 0.2 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
 		half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
 		expansion_ratio = 30			# Nozzle expansion ratio (Exit Area / Throat Area)
 		m_valve	= 1.5 / 1000			# Mass PBT, kg
@@ -417,7 +426,7 @@ for gas_type in gas_types:
 	# Start with a P_t_init and T_t_init and repeatedly run the nozzle code
 	# Nozzle code will return throat and exit flow properties (along with thrust, ISP, impulse) based on supply properties
 	# Results are used to determine mass flow rate, which is then used to calculate new supply pressure
-	while delta_pres > cutoff_cond and P_t_plenum[-1] > P_amb:
+	while delta_pres > cutoff_cond and P_t_plenum[-1] > P_amb and time[-1] < cutoff_time:
 		# --------------------------------------------------------------------------------
 		if thermal_model:
 			# Step 1: Get initial mass flow rate (This is for the FIRST time step only!)
@@ -933,7 +942,6 @@ for gas_type in gas_types:
 	ax.legend(legend, handles, loc='lower right', fontsize=7, framealpha=0.9)		# Make a new legend with the modified handles
 
 	plt.tight_layout()
-	plt.show()
 
 
 
@@ -1003,16 +1011,13 @@ for gas_type in gas_types:
 			bbox={'facecolor': 'red', 'alpha': 0.2, 'pad': 7})
 
 	plt.tight_layout()
-	plt.show()
-
-
-
-
-
+	# plt.show()
 
 
 
 all_parameters = all_parameters.set_index('gas_type')
+all_parameters.to_csv('simulation_parameters.csv', index=True)
+all_data.to_csv('simulation_data.csv', index=False)
 
 
 ## ==================================================================================
@@ -1023,7 +1028,7 @@ linewidth = 2
 fontsize = 8
 
 data = 	{ 
-			# 'P_t': 				all_data['P_t'],
+			'P_t': 				all_data['P_t'],
 			# 'T_t': 				all_data['T_t'],
 			# 'rho_t':			all_data['rho_t'],
 			# 'mu_t':				all_data['mu_t'],
@@ -1064,10 +1069,10 @@ data = 	{
 			# 'CF_ideal': 	all_data['CF_ideal'],
 			# 'visc_losses': 		all_data['visc_losses'],
 			# 'CF_eff': 		all_data['CF_eff'],
-			'eff_thrust':	all_data['eff_thrust'],
-			# 'avg_thrust': 	all_data['avg_thrust'],
+			# 'eff_thrust':	all_data['eff_thrust'],
+			'avg_thrust': 	all_data['avg_thrust'],
 			'cum_impulse': 	all_data['cum_impulse'],
-			'cum_eff_impulse': 	all_data['cum_eff_impulse'],
+			# 'cum_eff_impulse': 	all_data['cum_eff_impulse'],
 			# 'ISP': 			all_data['ISP'],
 			# 'ARs at shock':	all_data['area ratios at shock']
 
@@ -1332,7 +1337,7 @@ ax[1].set(xlabel=r'Time $(sec)$')
 
 plt.tight_layout()
 plt.subplots_adjust(top=0.89)
-plt.show()
+# plt.show()
 
 
 
@@ -1365,7 +1370,7 @@ for gas in gas_types:
 
 	plt.tight_layout()
 	plt.subplots_adjust(top=0.85)
-plt.show()
+# plt.show()
 
 
 
@@ -1416,7 +1421,7 @@ for gas in gas_types:
 	plt.subplots_adjust(top=0.885)
 	# axs[0].set_ylim([-0.01, 2.6])
 	# axs[1].set_ylim(bottom=-0.01)
-	plt.show()
+	# plt.show()
 
 
 
@@ -1458,7 +1463,7 @@ axs.tick_params(axis='x', labelsize=6, pad=0)
 axs.xaxis.label.set_size(8)
 axs.set(xlabel=r'Time $(sec)$')
 
-plt.show()
+# plt.show()
 
 
 
@@ -1597,7 +1602,7 @@ axs[1, 1].set(xlabel=r'Nozzle Length, $mm$')
 
 axs[0, 0].set_ylim(bottom=-0.55, top=0.55)
 
-plt.show()
+# plt.show()
 
 
 

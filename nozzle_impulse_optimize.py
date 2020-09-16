@@ -10,20 +10,25 @@ import sys
 import seaborn as sns
 from data_handling_funcs import *
 from matplotlib.lines import Line2D
+import matplotlib as mpl
+from nozzle_helperFuncs import *
+
 
 ## ==================================================================================
 ## ---- USER OPTIONS -----------------------------------------------------------------
 ## ==================================================================================
 
-gas_type = 'CO2'				# Gas Choices: R236fa, R134a, N2, CO2, H2, air
-P_t_init = 114.7 * 6894.76  	# Init Total Pressure, units of Pa (psia * 6894.76)
-P_amb = 14.7 * 6894.76  		# Ambient Pressure, units of Pa (psia * 6894.76)
-T_t_init = 0 + 273.15  			# Init Total Temperature, units of K (C + 273.15)
-vol = 30 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
-cutoff_cond = 0.001				# Cutoff condition, defined by the fractional change in pressure (relative to P_t_init) per second, units of 1/sec
-d_star = 0.6 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
+gas_type = 'R134a'				# Gas Choices: R236fa, R134a, N2, CO2, H2, air
+
+
+P_t_init = 82.9 * 6894.76  	# Init Total Pressure, units of Pa (psia * 6894.76)
+P_amb = 0 * 6894.76  		# Ambient Pressure, units of Pa (psia * 6894.76)
+T_t_init = 20 + 273.15  			# Init Total Temperature, units of K (C + 273.15)
+vol = 10 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
+cutoff_cond = 0.0001				# Cutoff condition, defined by the fractional change in pressure (relative to P_t_init) per second, units of 1/sec
+d_star = 0.2 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
 list_of_expansion_ratios = [x/100 for x in np.arange(100, 1000, 10).tolist()]  # Gotta do it like this to circumvent floating point precision errors w/ the .tolist method
-list_of_expansion_ratios = [x for x in np.arange(1.0, 2.0, 0.01)]
+list_of_expansion_ratios = [x for x in np.arange(1.0, 60.0, 1)]
 								# 	Inlet PSI ------- Ideal Expansion Ratio
 								# 		114.7 ------- 1.8048
 								# 		80 ---------- 1.6173
@@ -41,8 +46,8 @@ list_of_expansion_ratios = [x for x in np.arange(1.0, 2.0, 0.01)]
 half_angle = 10  				# (Conical) Nozzle expansion half-angle (degrees)
 bit_tip_dia = 0.1 / 1000		# (Conical) Engraving bit tip diameter, used to determine drill depth for optimized nozzle expansion ratio
 
-figsize = (7.5, 4.5)			# Figure size (in)
-dpi = 150						# Figure dpi
+figsize = (6,3.5)			# Figure size (in)
+dpi = 300						# Figure dpi
 
 
 
@@ -63,6 +68,8 @@ if gas_type == 'R134a':
 	R = 8.314/0.10203  # Specific gas constant (J/kg-K)
 	T_trip = 169.85  # Triple point temperature (K)
 	P_trip = 389.56  # Triple point pressure (Pa)
+	fluid_props = pd.read_excel('R134a_props_NIST.xlsx', sheet_name=None)
+	fluid_props_vol = pd.read_excel('R134a_props_const_vol_NIST.xlsx', sheet_name=None)
 
 if gas_type == 'N2':
 	k = 1.039
@@ -75,6 +82,8 @@ if gas_type == 'CO2':
 	R = 8.314/0.04401  # Specific gas constant (J/kg-K)
 	T_trip = 216.58  # Triple point temperature (K)
 	P_trip = 518500  # Triple point pressure (Pa)
+	fluid_props = pd.read_excel('CO2_props_NIST.xlsx', sheet_name=None)
+	fluid_props_vol = pd.read_excel('CO2_props_costVol_NIST.xlsx', sheet_name=None)
 
 if gas_type == 'H2':
 	k = 1.410
@@ -84,12 +93,33 @@ if gas_type == 'air':
 	k = 1.401
 	R = 8.314/0.0289645  # Specific gas constant (J/kg-K)
 
-density_init = P_t_init/(R*(T_t_init))  # Units of kg/m^3 (or g/l)
-m_init = density_init*vol  # Units of kg
-dia = 2*(vol*(3/4)/math.pi)**(1/3)  # Plenum diatmer , units of m
 
-time_step_init = 15.28*vol*(P_t_init-P_amb)/((P_t_init*d_star)**2)
 
+h_from_PT_gas_func = create_h_from_PT_gas_func(fluid_props)		# Returns kJ/kg for (Pa, K) input
+u_from_PT_gas_func = create_u_from_PT_gas_func(fluid_props)		# Returns kJ/kg for (Pa, K) input
+r_from_PT_gas_func = create_r_from_PT_gas_func(fluid_props)		# Returns g/ml for (Pa, K) input
+
+P_from_ru_func, T_from_ru_func = create_PT_from_ru_gas_func(fluid_props_vol)
+P_from_rh_func, T_from_rh_func = create_PT_from_rh_gas_func(fluid_props_vol)
+P_from_rT_func = create_P_from_rT_gas_func(fluid_props_vol)
+
+# --------------------------------------------------------------------------------
+# Calculate initial properties
+rho_t_init = r_from_PT_gas_func(P_t_init, T_t_init)[0]*1000				# Initial density, kg/m^3 (or g/l), using REAL DATA
+mu_t_init = 1/rho_t_init  												# Initial specific volume, m^3/kg (or l/g)
+m_init = rho_t_init*vol  												# Initial propellant mass, kg
+u_sp_init = u_from_PT_gas_func(P_t_init, T_t_init)[0]*1000				# Initial specific internal energy, J/kg
+h_sp_init = h_from_PT_gas_func(P_t_init, T_t_init)[0]*1000				# Initial specific enthalpy, J/kg
+dia = 2*(vol*(3/4)/np.pi)**(1/3)  										# Plenum diameter, m
+time_step_init = 15.28*vol*(P_t_init-P_amb)/((P_t_init*d_star)**2)		# Time step, s
+
+# Recalculate P_init based on rho_t_init and h_sp_init. I know it shouldn't be different, but it is, based on whichever function is being used (h_from_PT vs P_from_rh)
+P_t_init = P_from_ru_func(rho_t_init, u_sp_init/1000)[0]*1000000
+T_t_init = T_from_ru_func(rho_t_init, u_sp_init/1000)[0]
+
+
+
+# --------------------------------------------------------------------------------
 list_of_exit_areas = [x*(np.pi*d_star**2)/4 for x in list_of_expansion_ratios]
 list_of_exit_diameters = [d_star*np.sqrt(x) for x in list_of_expansion_ratios]
 list_of_nozzle_lengths = [((x-d_star)/2)/np.tan(np.radians(half_angle)) for x in list_of_exit_diameters]
@@ -111,7 +141,7 @@ for expansion_ratio in list_of_expansion_ratios:
 	# list_of_P_ts = list(np.linspace (P_t_max, P_amb, no_of_points))
 	list_of_P_ts = [P_t_init]  # These need to be precribed at the first time step so the nozzle function can calculate the rest of the parameters at the same time step
 	list_of_T_ts = [T_t_init]
-	list_of_chamber_densities = [density_init]
+	list_of_rho_ts = [rho_t_init]
 	m_gas = [m_init]
 
 	time = [0]
@@ -184,9 +214,9 @@ for expansion_ratio in list_of_expansion_ratios:
 
 		# Calculate these properties in preparation for the next loop. Loop will end if the newly calculated pressure drops below the ambient pressure.
 		m_gas.append(m_gas[-1] - m_dot*time_step) 
-		list_of_chamber_densities.append(m_gas[-1]/vol)
-		list_of_T_ts.append( list_of_T_ts[-1]*(list_of_chamber_densities[-1]/list_of_chamber_densities[-2])**(k-1) )
-		list_of_P_ts.append( list_of_P_ts[-1]*(list_of_chamber_densities[-1]/list_of_chamber_densities[-2])**k )
+		list_of_rho_ts.append(m_gas[-1]/vol)
+		list_of_T_ts.append( list_of_T_ts[-1]*(list_of_rho_ts[-1]/list_of_rho_ts[-2])**(k-1) )
+		list_of_P_ts.append( list_of_P_ts[-1]*(list_of_rho_ts[-1]/list_of_rho_ts[-2])**k )
 		time.append(i*time_step)  # The first iteration is at t=0, so the first time[] entry will be 0.
 
 		# print('Avg thrust: ' + str(round(average_thrust[-1]*1000, 3)) + ' mN at ' + str(round(time[-1], 3)) + ' sec', end='\r', flush=True)
@@ -222,7 +252,7 @@ for expansion_ratio in list_of_expansion_ratios:
 
 	# By the nature of this loop, anything that has an init value will end up with one extra element in its list
 	# So we must manually remove the last element once all is said and done in order to make all the array lengths the same
-	del m_gas[-1], list_of_chamber_densities[-1], list_of_T_ts[-1], list_of_P_ts[-1], time[-1]
+	del m_gas[-1], list_of_rho_ts[-1], list_of_T_ts[-1], list_of_P_ts[-1], time[-1]
 
 
 
@@ -256,17 +286,23 @@ for expansion_ratio in list_of_expansion_ratios:
 ## ==================================================================================
 ## ---- PLOT ------------------------------------------------------------------------
 ## ==================================================================================
+class ScalarFormatterForceFormat(mpl.ticker.ScalarFormatter):
+		def _set_format(self):  # Override function that finds format to use.
+			self.format = "%1.1f"  # Give format here
+sns.axes_style("white")
+sns.set_style("whitegrid", {"xtick.major.size": 0, "ytick.major.size": 0, 'grid.linestyle': '--'})
+sns.set_context("paper", font_scale = 1, rc={"grid.linewidth": .5})
 
 # ---- Plot 2x3 [Thrust, Impulse, ISP, Re, Ma, Density] all vs. Inlet + Throat + Exit Pressure
 
 linewidth = 2
-fontsize = 12
+fontsize = 8
 
-fig1, axs = plt.subplots(2, 1, figsize=figsize, dpi=dpi, sharex='col')
-# fig1.suptitle( '          Net Impulse & Drill Depth vs. Expansion Ratio')
-fig1.suptitle( '          Net Impulse & Nozzle Length vs. Expansion Ratio', y=1)
+fig, axs = plt.subplots(2, 1, figsize=figsize, dpi=dpi, sharex='col')
+# fig.suptitle( '          Net Impulse & Drill Depth vs. Expansion Ratio')
+fig.suptitle( 'Net Impulse & Nozzle Length vs. Expansion Ratio', y=0.98)
 # axs[0].set_title(r'({}, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm)'.format(gas_label, vol*10**6, d_star*1000), fontsize=9)
-axs[0].set_title(r'$P_0$={} kPa, $P_{{amb}}$={} kPa, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, Prop: {})'.format(round(P_t_init/1000, 1), round(P_amb/1000, 1), vol*10**6, d_star*1000, gas_label), fontsize=9)
+axs[0].set_title(r'($P_0$={} kPa, $P_{{amb}}$={} kPa, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, Prop: {})'.format(round(P_t_init/1000, 1), round(P_amb/1000, 1), vol*10**6, d_star*1000, gas_label), fontsize=7)
 # axs[0].set_title(r'$P_0 = $' + str(int(P_t_init/1000)) + r' kPa, $P_{amb} = $' + str(int(P_amb/1000)) + ' kPa, Propellent: ' + gas_type, fontsize=10)
 
 axs[0].plot(list_of_expansion_ratios, [x*1000 for x in list_of_cumulative_impulses], color='#ff7f0e', linestyle='-', linewidth=linewidth)
@@ -286,6 +322,22 @@ axs[1].grid(which='major', axis='both', linestyle='--')
 box1 = axs[1].get_position()
 axs[1].set_position([box1.x0 + box1.width * 0.05, box1.y0 + box1.height * 0.05, box1.width, box1.height])
 
-fig1.align_ylabels()
-# plt.tight_layout()
+yfmt = ScalarFormatterForceFormat()
+# yfmt.set_powerlimits((0,0))
+axs[0].yaxis.set_major_formatter(yfmt)
+axs[1].yaxis.set_major_formatter(yfmt)
+# axs[i].ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
+axs[0].tick_params(axis='y', labelsize=6, pad=0)
+axs[1].tick_params(axis='y', labelsize=6, pad=0)
+axs[0].yaxis.offsetText.set_fontsize(6)
+axs[1].yaxis.offsetText.set_fontsize(6)
+
+fig.align_ylabels()
+plt.tight_layout()
+plt.subplots_adjust(top=0.88,
+					bottom=0.153,
+					left=0.101,
+					right=0.976,
+					hspace=0.116,
+					wspace=0.2)
 plt.show()
