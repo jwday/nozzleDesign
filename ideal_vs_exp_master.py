@@ -10,6 +10,7 @@ import numpy as np
 import sys
 import seaborn as sns
 from data_handling_funcs import all_data as all_exp_data
+import matplotlib as mpl
 
 all_data_heat_xfer = pd.read_csv('simulation_data_w_heat_co2110psia.csv')
 all_data_isen = pd.read_csv('simulation_data_isen_co2110psia.csv')
@@ -24,6 +25,7 @@ class ScalarFormatterForceFormat(mpl.ticker.ScalarFormatter):
 sns.axes_style("white")
 sns.set_style("whitegrid", {"xtick.major.size": 0, "ytick.major.size": 0, 'grid.linestyle': '--'})
 sns.set_context("paper", font_scale = 1, rc={"grid.linewidth": .5})
+yfmt = ScalarFormatterForceFormat()
 
 ## ==================================================================================
 ## ---- PRESSURE & THRUST VS TIME ---------------------------------------------------
@@ -121,11 +123,13 @@ fig1, axs = plt.subplots(2, 1, figsize=(6,4), dpi=300, sharex='col')
 if steady_state:
 	fig1.suptitle('Steady-State Pressure & Thrust Measurements'.format(len(test_nos), d_star*1000, expansion_ratio))
 else:
-	fig1.suptitle('Single Plenum Discharge Pressure & Thrust Measurements'.format(len(test_nos), d_star*1000, expansion_ratio), y=0.98, fontsize=10)
+	fig1.suptitle('Single Plenum Discharge Pressure & Thrust Measurements'.format(len(test_nos), d_star*1000, expansion_ratio), y=0.98)
 	# fig1.suptitle('Simulation Results Convergence for Varying Time Step', y=0.95)
 	# axs[0].set_title(r'({}, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(gas_label, vol*10**6, d_star*1000, expansion_ratio), fontsize=7)
 	# axs[0].set_title(r'CO$_2$, Nozzle $\varnothing$0.6 mm, $\lambda$=1.34 (5$x$ Trials/Set Point)', fontsize=7, color='dimgray', y=1.03)
-	axs[0].set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(gas_label, T_t_init, 30, d_star*1000, expansion_ratio), fontsize=7)
+	axs[0].set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(gas_label, T_t_init, 30, d_star*1000, expansion_ratio), fontsize=8)
+fig1.canvas.set_window_title('Single Plenum Discharge ExpVsIdeal')
+
 
 td1 = []  # Pressure
 for trial, test_no in reversed(list(enumerate(test_nos))):
@@ -157,15 +161,6 @@ if not steady_state:
 	axs[0].set_xlim(left=0.5, right=2.25)
 	axs[0].set_ylim(bottom=0)
 
-axs[0].set_ylabel('Pressure, $kPa$', color='#413839', fontsize=8)
-axs[0].tick_params(colors='#413839')
-axs[0].grid(which='major', axis='both', linestyle='--')
-axs[0].set_ylim(bottom=0)
-axs[0].legend(loc=1, fontsize=8)
-
-
-box0 = axs[0].get_position()
-# axs[0].set_position([box0.x0 + box0.width * 0.05, box0.y0 + box0.height * 0.05, box0.width, box0.height])
 
 
 td2 = []  # Thrust
@@ -198,11 +193,24 @@ if not steady_state:
 	axs[1].set_xlim(left=0.5, right=2.25)
 	axs[1].set_ylim(bottom=0)
 
-axs[1].set_ylabel('Thrust, $mN$', color='#413839', fontsize=8)
-axs[1].tick_params(colors='#413839')
-axs[1].grid(which='major', axis='both', linestyle='--')
-axs[1].legend(loc=1, fontsize=8)
 
+for ax in axs:
+	ax.yaxis.set_major_formatter(yfmt)
+	ax.yaxis.offsetText.set_fontsize(7)
+	ax.tick_params(axis='x', colors='#413839', labelsize=7, pad=0)
+	ax.tick_params(axis='y', labelsize=7, pad=0)
+	ax.grid(which='major', axis='both', linestyle='--')
+	ax.xaxis.label.set_size(8)
+	ax.yaxis.label.set_size(8)
+	ax.legend(loc=1, fontsize=8)
+
+axs[0].set(ylabel=r'Pressure, $kPa$')
+axs[0].set_ylim(bottom=-30)
+
+axs[1].set(ylabel=r'Thrust, $mN$')
+axs[1].set_ylim(bottom=-10)
+
+axs[-1].set(xlabel=r'Time $(sec)$')
 
 # Net impulse
 # if not steady_state:
@@ -226,14 +234,6 @@ axs[1].legend(loc=1, fontsize=8)
 # box1 = axs[2].get_position()
 # axs[1].set_position([box1.x0 + box1.width * 0.05, box1.y0 + box1.height * 0.05, box1.width, box1.height])
 
-fig1.align_ylabels()
-for ax in axs:
-	ax.tick_params(axis='y', labelsize=6, pad=0)
-	ax.yaxis.offsetText.set_fontsize(6)
-
-	ax.tick_params(axis='x', labelsize=6, pad=0)
-	ax.xaxis.label.set_size(8)
-	ax.set(xlabel=r'Time $(sec)$')
 
 
 
@@ -325,4 +325,6 @@ for ax in axs:
 # ---- Plot Everything
 plt.tight_layout()
 plt.subplots_adjust(top=0.885)
+fig1.align_ylabels()
+
 plt.show()

@@ -28,7 +28,8 @@ vol = 10 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
 cutoff_cond = 0.0001				# Cutoff condition, defined by the fractional change in pressure (relative to P_t_init) per second, units of 1/sec
 d_star = 0.2 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
 list_of_expansion_ratios = [x/100 for x in np.arange(100, 1000, 10).tolist()]  # Gotta do it like this to circumvent floating point precision errors w/ the .tolist method
-list_of_expansion_ratios = [x for x in np.arange(1.0, 60.0, 1)]
+# list_of_expansion_ratios = [x for x in np.arange(1.0, 10.0, 0.1)]
+list_of_expansion_ratios = [x for x in np.logspace(0, 1.6, 20)]
 								# 	Inlet PSI ------- Ideal Expansion Ratio
 								# 		114.7 ------- 1.8048
 								# 		80 ---------- 1.6173
@@ -46,7 +47,7 @@ list_of_expansion_ratios = [x for x in np.arange(1.0, 60.0, 1)]
 half_angle = 10  				# (Conical) Nozzle expansion half-angle (degrees)
 bit_tip_dia = 0.1 / 1000		# (Conical) Engraving bit tip diameter, used to determine drill depth for optimized nozzle expansion ratio
 
-figsize = (6,3.5)			# Figure size (in)
+# figsize = (6,3.5)			# Figure size (in)
 dpi = 300						# Figure dpi
 
 
@@ -298,46 +299,74 @@ sns.set_context("paper", font_scale = 1, rc={"grid.linewidth": .5})
 linewidth = 2
 fontsize = 8
 
-fig, axs = plt.subplots(2, 1, figsize=figsize, dpi=dpi, sharex='col')
-# fig.suptitle( '          Net Impulse & Drill Depth vs. Expansion Ratio')
-fig.suptitle( 'Net Impulse & Nozzle Length vs. Expansion Ratio', y=0.98)
-# axs[0].set_title(r'({}, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm)'.format(gas_label, vol*10**6, d_star*1000), fontsize=9)
-axs[0].set_title(r'($P_0$={} kPa, $P_{{amb}}$={} kPa, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, Prop: {})'.format(round(P_t_init/1000, 1), round(P_amb/1000, 1), vol*10**6, d_star*1000, gas_label), fontsize=7)
-# axs[0].set_title(r'$P_0 = $' + str(int(P_t_init/1000)) + r' kPa, $P_{amb} = $' + str(int(P_amb/1000)) + ' kPa, Propellent: ' + gas_type, fontsize=10)
+# fig, axs = plt.subplots(2, 1, figsize=figsize, dpi=dpi, sharex='col')
+# # fig.suptitle( '          Net Impulse & Drill Depth vs. Expansion Ratio')
+# fig.suptitle( 'Net Impulse & Nozzle Length vs. Expansion Ratio', y=0.98)
+# # axs[0].set_title(r'({}, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm)'.format(gas_label, vol*10**6, d_star*1000), fontsize=9)
+# axs[0].set_title(r'($P_0$={} kPa, $P_{{amb}}$={} kPa, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, Prop: {})'.format(round(P_t_init/1000, 1), round(P_amb/1000, 1), vol*10**6, d_star*1000, gas_label), fontsize=7)
+# # axs[0].set_title(r'$P_0 = $' + str(int(P_t_init/1000)) + r' kPa, $P_{amb} = $' + str(int(P_amb/1000)) + ' kPa, Propellent: ' + gas_type, fontsize=10)
 
-axs[0].plot(list_of_expansion_ratios, [x*1000 for x in list_of_cumulative_impulses], color='#ff7f0e', linestyle='-', linewidth=linewidth)
-# axs[0].set_title('Required Drill Depth for Varying Expansion Ratio')
-axs[0].set_ylabel('Net Impulse, mN-s', color='#413839', fontsize=fontsize)
-axs[0].tick_params(colors='#413839')
-axs[0].grid(which='major', axis='both', linestyle='--')
-box0 = axs[0].get_position()
-axs[0].set_position([box0.x0 + box0.width * 0.05, box0.y0 + box0.height * 0.05, box0.width, box0.height])
+# axs[0].plot(list_of_expansion_ratios, [x*1000 for x in list_of_cumulative_impulses], color='#ff7f0e', linestyle='-', linewidth=linewidth)
+# # axs[0].set_title('Required Drill Depth for Varying Expansion Ratio')
+# axs[0].set_ylabel('Net Impulse, mN-s', color='#413839', fontsize=fontsize)
+# axs[0].tick_params(colors='#413839')
+# axs[0].grid(which='major', axis='both', linestyle='--')
+# box0 = axs[0].get_position()
+# axs[0].set_position([box0.x0 + box0.width * 0.05, box0.y0 + box0.height * 0.05, box0.width, box0.height])
 
-axs[1].plot(list_of_expansion_ratios, [x*1000 for x in list_of_nozzle_lengths], color='#ff7f0e', linestyle='-', linewidth=linewidth)
-axs[1].set_xlabel('Expansion Ratio, \u03B5', color='#413839', fontsize=fontsize)
-# axs[1].set_ylabel('Drill Depth, mm', color='#413839', fontsize=fontsize)
-axs[1].set_ylabel('Nozzle Length, mm', color='#413839', fontsize=fontsize)
-axs[1].tick_params(colors='#413839')
-axs[1].grid(which='major', axis='both', linestyle='--')
-box1 = axs[1].get_position()
-axs[1].set_position([box1.x0 + box1.width * 0.05, box1.y0 + box1.height * 0.05, box1.width, box1.height])
+# axs[1].plot(list_of_expansion_ratios, [x*1000 for x in list_of_nozzle_lengths], color='#ff7f0e', linestyle='-', linewidth=linewidth)
+# axs[1].set_xlabel('Expansion Ratio, \u03B5', color='#413839', fontsize=fontsize)
+# # axs[1].set_ylabel('Drill Depth, mm', color='#413839', fontsize=fontsize)
+# axs[1].set_ylabel('Nozzle Length, mm', color='#413839', fontsize=fontsize)
+# axs[1].tick_params(colors='#413839')
+# axs[1].grid(which='major', axis='both', linestyle='--')
+# box1 = axs[1].get_position()
+# axs[1].set_position([box1.x0 + box1.width * 0.05, box1.y0 + box1.height * 0.05, box1.width, box1.height])
 
 yfmt = ScalarFormatterForceFormat()
-# yfmt.set_powerlimits((0,0))
-axs[0].yaxis.set_major_formatter(yfmt)
-axs[1].yaxis.set_major_formatter(yfmt)
-# axs[i].ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
-axs[0].tick_params(axis='y', labelsize=6, pad=0)
-axs[1].tick_params(axis='y', labelsize=6, pad=0)
-axs[0].yaxis.offsetText.set_fontsize(6)
-axs[1].yaxis.offsetText.set_fontsize(6)
+# # yfmt.set_powerlimits((0,0))
+# axs[0].yaxis.set_major_formatter(yfmt)
+# axs[1].yaxis.set_major_formatter(yfmt)
+# # axs[i].ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
+# axs[0].tick_params(axis='y', labelsize=6, pad=0)
+# axs[1].tick_params(axis='y', labelsize=6, pad=0)
+# axs[0].yaxis.offsetText.set_fontsize(6)
+# axs[1].yaxis.offsetText.set_fontsize(6)
 
-fig.align_ylabels()
+# fig.align_ylabels()
+# plt.tight_layout()
+# plt.subplots_adjust(top=0.88,
+# 					bottom=0.153,
+# 					left=0.101,
+# 					right=0.976,
+# 					hspace=0.116,
+# 					wspace=0.2)
+
+
+
+fig, axs = plt.subplots(2,1, figsize=(6, 3.5), dpi=dpi, sharex=True)
+fig.suptitle( 'In-Space Net Impulse & Nozzle Length vs. Expansion Ratio', y=0.98)
+axs[0].set_title(r'($P_0$={} kPa, $P_{{amb}}$={} kPa, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, Prop: {})'.format(round(P_t_init/1000, 1), round(P_amb/1000, 1), vol*10**6, d_star*1000, gas_label), fontsize=8)
+fig.canvas.set_window_title('Sim Imp+NozzleLength_vs_ExpRatio {}'.format(gas_type))
+
+axs[0].plot(list_of_expansion_ratios, [x*1000 for x in list_of_cumulative_impulses], color='#1f77b4', linestyle='-')
+axs[1].plot(list_of_expansion_ratios, [x*1000 for x in list_of_nozzle_lengths], color='#1f77b4', linestyle='-')
+
+for ax in axs:
+	ax.yaxis.set_major_formatter(yfmt)
+	ax.yaxis.offsetText.set_fontsize(7)
+	ax.tick_params(axis='x', colors='#413839', labelsize=7, pad=0)
+	ax.tick_params(axis='y', labelsize=7, pad=0)
+	ax.grid(which='major', axis='both', linestyle='--')
+	ax.xaxis.label.set_size(8)
+	ax.yaxis.label.set_size(8)
+
+axs[0].set(ylabel=r'Net Impulse, $mN-s$')
+axs[1].set(ylabel=r'Expansion Ratio')
+axs[-1].set(xlabel=r'Time $(sec)$')
+
 plt.tight_layout()
-plt.subplots_adjust(top=0.88,
-					bottom=0.153,
-					left=0.101,
-					right=0.976,
-					hspace=0.116,
-					wspace=0.2)
+plt.subplots_adjust(top=0.85)
+fig.align_ylabels()
+
 plt.show()
