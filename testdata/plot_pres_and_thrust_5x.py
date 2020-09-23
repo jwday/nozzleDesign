@@ -181,7 +181,7 @@ mdot_stdevs = data1.groupby('Set Point').std().drop(['Trial'], axis=1).sort_valu
 # This is ALL experimental data ONLY!!!!
 fig1, axs = plt.subplots(2, sharex=True, dpi=dpi, figsize=(6, 4))
 fig1.suptitle('Pressure & Thrust vs. Time for Steady-State Conditions', y=0.98)
-axs[0].set_title(r'(CO$_2$, Nozzle $\varnothing$0.6 mm, $\lambda$=1.34 [3$x$ Trials/Set Point])', fontsize=8)
+axs[0].set_title(r'(CO$_2$, Nozzle $\varnothing =$0.6 mm, $\lambda$=1.34 [3$x$ Trials/Set Point])', fontsize=8)
 fig1.canvas.set_window_title('SteadyState Pressure and Thrust UpdatedStyle')
 
 sns.lineplot(ax=axs[0], x="Time (s)", y="Pressure (kPa)", hue="Set Point", style="Set Point", data=all_float_data, ci='sd')
@@ -205,6 +205,15 @@ axs[1].set_ylim(bottom=-10)
 
 axs[-1].set(xlabel=r'Time, $sec$')
 
+axs[0].text(0.2, 30, 'Droop', style='italic', fontsize=9,
+			bbox={'facecolor': 'red', 'alpha': 0.2, 'pad': 2})
+axs[0].arrow(0.7, 110, 0., 60, head_width=0.2, head_length=30, fc='k', ec='k')
+# axs[0].annotate('Droop', xy=(0.6, 180), xytext=(0.2, 30), arrowprops=dict(facecolor='black', arrowstyle="->"))
+
+axs[0].text(9.8, 30, 'Valve Closure', style='italic', fontsize=9,
+			bbox={'facecolor': 'red', 'alpha': 0.2, 'pad': 2})
+axs[0].arrow(11.05, 110, -0., 60, head_width=0.2, head_length=30, fc='k', ec='k')
+
 plt.tight_layout()
 plt.subplots_adjust(top=0.875)
 fig1.align_ylabels()
@@ -215,7 +224,7 @@ plt.xlim(left=0, right=16)
 # Second one: (1) Thrust vs. Pressure (Isentropic + Experimental), (2) mdot vs. Pressure (Isentropic + Experimental)
 fig2, axs = plt.subplots(2, 1, sharex=True, dpi=dpi, figsize=(6,4))
 fig2.suptitle('Thrust & Mass Flow Rate vs. Pressure for Steady-State Conditions', y=0.98)
-axs[0].set_title(r'(CO$_2$, Nozzle $\varnothing$0.6 mm, $\lambda$=1.34 [3$x$ Trials/Set Point)]', fontsize=8)
+axs[0].set_title(r'(CO$_2$, Nozzle $\varnothing =$0.6 mm, $\lambda$=1.34 [3$x$ Trials/Set Point)]', fontsize=8)
 fig2.canvas.set_window_title('SteadyState Thrust and MassFlowRate UpdatedStyle')
 
 # ====== Plot (1): Thrust vs Pressure ============

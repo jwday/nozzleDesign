@@ -18,7 +18,7 @@ from nozzle_helperFuncs import *
 ## ---- USER OPTIONS -----------------------------------------------------------------
 ## ==================================================================================
 
-gas_type = 'R134a'				# Gas Choices: R236fa, R134a, N2, CO2, H2, air
+gas_type = 'CO2'				# Gas Choices: R236fa, R134a, N2, CO2, H2, air
 
 
 P_t_init = 82.9 * 6894.76  	# Init Total Pressure, units of Pa (psia * 6894.76)
@@ -28,8 +28,8 @@ vol = 10 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
 cutoff_cond = 0.0001				# Cutoff condition, defined by the fractional change in pressure (relative to P_t_init) per second, units of 1/sec
 d_star = 0.2 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
 list_of_expansion_ratios = [x/100 for x in np.arange(100, 1000, 10).tolist()]  # Gotta do it like this to circumvent floating point precision errors w/ the .tolist method
-# list_of_expansion_ratios = [x for x in np.arange(1.0, 10.0, 0.1)]
-list_of_expansion_ratios = [x for x in np.logspace(0, 1.6, 20)]
+list_of_expansion_ratios = [x for x in np.arange(1.0, 10.0, 0.1)]	# Use for CO2
+# list_of_expansion_ratios = [x for x in np.logspace(0, 1.6, 20)]	# Use for R134a
 								# 	Inlet PSI ------- Ideal Expansion Ratio
 								# 		114.7 ------- 1.8048
 								# 		80 ---------- 1.6173
@@ -345,8 +345,8 @@ yfmt = ScalarFormatterForceFormat()
 
 
 fig, axs = plt.subplots(2,1, figsize=(6, 3.5), dpi=dpi, sharex=True)
-fig.suptitle( 'In-Space Net Impulse & Nozzle Length vs. Expansion Ratio', y=0.98)
-axs[0].set_title(r'($P_0$={} kPa, $P_{{amb}}$={} kPa, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, Prop: {})'.format(round(P_t_init/1000, 1), round(P_amb/1000, 1), vol*10**6, d_star*1000, gas_label), fontsize=8)
+fig.suptitle( 'On-Ground Net Impulse & Nozzle Length vs. Expansion Ratio', y=0.98)
+axs[0].set_title(r'({} at $P_0$={} kPa, $P_{{amb}}$={} kPa, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing =${} mm)'.format(gas_label, round(P_t_init/1000, 1), round(P_amb/1000, 1), vol*10**6, d_star*1000), fontsize=8)
 fig.canvas.set_window_title('Sim Imp+NozzleLength_vs_ExpRatio {}'.format(gas_type))
 
 axs[0].plot(list_of_expansion_ratios, [x*1000 for x in list_of_cumulative_impulses], color='#1f77b4', linestyle='-')
@@ -362,8 +362,8 @@ for ax in axs:
 	ax.yaxis.label.set_size(8)
 
 axs[0].set(ylabel=r'Net Impulse, $mN-s$')
-axs[1].set(ylabel=r'Expansion Ratio')
-axs[-1].set(xlabel=r'Time $(sec)$')
+axs[1].set(ylabel=r'Nozzle Length, $mm$')
+axs[-1].set(xlabel=r'Expansion Ratio, $\epsilon$')
 
 plt.tight_layout()
 plt.subplots_adjust(top=0.85)

@@ -62,7 +62,7 @@ for i, gas in enumerate(params['gas_type']):
 	# Pressure, Thrust, and Net Impulse 
 	fig1, axs = plt.subplots(3,1, figsize=(6,4), dpi=dpi, sharex=True)
 	fig1.suptitle('{} Single Plenum Discharge Performance'.format(suptitle_var), y=0.98)
-	axs[0].set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(gas_label, T_t_init, round(plenum_vol, 1), d_star, expansion_ratio), fontsize=8)
+	axs[0].set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing =${} mm, $\lambda$={})'.format(gas_label, T_t_init, round(plenum_vol, 1), d_star, expansion_ratio), fontsize=8)
 	fig1.canvas.set_window_title('Sim Thrust and Impulse {}'.format(gas))
 
 	axs[0].plot(all_data[all_data['gas_type'] == gas]['time'], [x*10**-3 for x in all_data[all_data['gas_type'] == gas]['P_t']], 											linestyle='-', color='#1f77b4')
@@ -104,9 +104,9 @@ for i, gas in enumerate(params['gas_type']):
 	# -------------------------------------------------------------------------------
 	# Specific Impulse
 	
-	fig2, axs = plt.subplots(1,1, figsize=(6, 1.8), dpi=dpi, sharex=True)
+	fig2, axs = plt.subplots(1,1, figsize=(6, 2), dpi=dpi, sharex=True)
 	fig2.suptitle('{} Specific Impulse'.format(suptitle_var), y=0.98)
-	axs.set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(gas_label, T_t_init, round(plenum_vol, 1), d_star, expansion_ratio), fontsize=8)
+	axs.set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing =${} mm, $\lambda$={})'.format(gas_label, T_t_init, round(plenum_vol, 1), d_star, expansion_ratio), fontsize=8)
 	fig2.canvas.set_window_title('Sim ISP {}'.format(gas))
 
 	axs.plot(all_data[all_data['gas_type'] == gas]['time'], all_data[all_data['gas_type'] == gas]['ISP'], linestyle='-', color='#1f77b4')
@@ -128,7 +128,7 @@ for i, gas in enumerate(params['gas_type']):
 	axs.set_ylim(top=50, bottom=-1)
 
 	plt.tight_layout()
-	plt.subplots_adjust(top=0.765)
+	plt.subplots_adjust(top=0.8)
 	fig2.align_ylabels()
 
 plt.show()

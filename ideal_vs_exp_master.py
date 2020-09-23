@@ -127,7 +127,7 @@ else:
 	# fig1.suptitle('Simulation Results Convergence for Varying Time Step', y=0.95)
 	# axs[0].set_title(r'({}, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(gas_label, vol*10**6, d_star*1000, expansion_ratio), fontsize=7)
 	# axs[0].set_title(r'CO$_2$, Nozzle $\varnothing$0.6 mm, $\lambda$=1.34 (5$x$ Trials/Set Point)', fontsize=7, color='dimgray', y=1.03)
-	axs[0].set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(gas_label, T_t_init, 30, d_star*1000, expansion_ratio), fontsize=8)
+	axs[0].set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing =${} mm, $\lambda$={})'.format(gas_label, T_t_init, 30, d_star*1000, expansion_ratio), fontsize=8)
 fig1.canvas.set_window_title('Single Plenum Discharge ExpVsIdeal')
 
 
@@ -156,7 +156,7 @@ if not steady_state:
 	# 			 y='P_t',
 	# 			 hue='Time Step'
 	# )
-	axs[0].plot([x+0.68 for x in all_data_heat_xfer[all_data_heat_xfer['gas_type']=='CO2']['time']], [x/1000 for x in all_data_heat_xfer[all_data_heat_xfer['gas_type']=='CO2']['P_t']], color='#ff7f0e', label='Isentropic', linestyle='-', linewidth=linewidth)
+	axs[0].plot([x+0.68 for x in all_data_heat_xfer[all_data_heat_xfer['gas_type']=='CO2']['time']], [x/1000 for x in all_data_heat_xfer[all_data_heat_xfer['gas_type']=='CO2']['P_t']], color='#ff7f0e', label='Isentropic Theory', linestyle='-', linewidth=linewidth)
 	# axs[0].plot([x+0.68 for x in all_data_isen[all_data_isen['gas_type']=='CO2']['time']], [x/1000 for x in all_data_isen[all_data_isen['gas_type']=='CO2']['P_t']], color='#ff7f0e', label='Isentropic', linestyle='--', linewidth=linewidth)
 	axs[0].set_xlim(left=0.5, right=2.25)
 	axs[0].set_ylim(bottom=0)
@@ -188,7 +188,7 @@ if not steady_state:
 	# 			data=all_data_heat_xfer,
 	# 			hue='Time Step'
 	# )
-	axs[1].plot([x+0.68 for x in all_data_heat_xfer[all_data_heat_xfer['gas_type']=='CO2']['time']], all_data_heat_xfer[all_data_heat_xfer['gas_type']=='CO2']['thrust'].multiply(1000), color='#ff7f0e', label='Isentropic', linestyle='-', linewidth=linewidth)
+	axs[1].plot([x+0.68 for x in all_data_heat_xfer[all_data_heat_xfer['gas_type']=='CO2']['time']], all_data_heat_xfer[all_data_heat_xfer['gas_type']=='CO2']['thrust'].multiply(1000), color='#ff7f0e', label='Isentropic Theory', linestyle='-', linewidth=linewidth)
 	# axs[1].plot([x+0.68 for x in all_data_isen[all_data_isen['gas_type']=='CO2']['time']], all_data_isen[all_data_isen['gas_type']=='CO2']['thrust'].multiply(1000), color='#ff7f0e', label='Isentropic', linestyle='--', linewidth=linewidth)
 	axs[1].set_xlim(left=0.5, right=2.25)
 	axs[1].set_ylim(bottom=0)
