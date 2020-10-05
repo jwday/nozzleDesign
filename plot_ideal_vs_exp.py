@@ -1,6 +1,8 @@
-# Nozzle master control
-# Given a nozzle geometry and initial conditions, this code will sweep through a range of stagnation pressures and output the exit conditions
-# It's interesting to note that the critical conditions are dependent ONLY on geometry and not stagnation conditions
+# plot_ideal_vs_exp.py
+# Comparison of ideal (simulated) results with experimental data for single plenum discharge
+# Requires user to first run simulation to generate 'simulation_data.csv' (if not already present, or if parameters are changed)
+# Will plot 2x1 subplots to compare pressure and thrust to experimental data collected on UC Davis HRVIP thrust test stand, 11-30-2019
+
 from nozzle_code_3 import nozzle
 import matplotlib.pyplot as plt
 from scipy import stats
@@ -12,8 +14,8 @@ import seaborn as sns
 from data_handling_funcs import all_data as all_exp_data
 import matplotlib as mpl
 
-all_data_heat_xfer = pd.read_csv('simulation_data_w_heat_co2110psia.csv')
-all_data_isen = pd.read_csv('simulation_data_isen_co2110psia.csv')
+all_data_heat_xfer = pd.read_csv('simulation_data.csv')
+all_data_isen = pd.read_csv('simulation_data.csv')
 d_star = 0.6 / 1000
 expansion_ratio = 1.34
 gas_label = all_data_heat_xfer[all_data_heat_xfer['gas_type'] == 'CO2']['gas_type'][0]

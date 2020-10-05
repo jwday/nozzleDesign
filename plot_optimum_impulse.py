@@ -1,6 +1,7 @@
-# Nozzle Impulse Optimization
-# This code will run the standard nozzle_master sequence and sweep through a range of expansion ratios to observe the effect on Net Impulse
-from nozzle_code_2 import nozzle
+# plot_optimum_impulse.py
+# This code will run the nozzle_code sequence and sweep through a range of expansion ratios to observe the effect on net impulse
+
+from nozzle_code_3 import nozzle
 import matplotlib.pyplot as plt
 from scipy import stats
 import math

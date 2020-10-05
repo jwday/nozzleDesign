@@ -1,4 +1,6 @@
-# 1D_Isentropic_Nozzle_Flow Code
+# plot_mach_area_relation.py
+# Simple exercise to plot the Mach Number-Area relation for three gasses (CO2, R134a, Air)
+
 import numpy as np
 import sys
 import math

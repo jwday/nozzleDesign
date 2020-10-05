@@ -1,773 +1,1588 @@
-# Nozzle master control
-# This code will estimate the performance of a nozzle + plenum assembly for given starting conditions and nozzle geometry
-from nozzle_code_2 import nozzle
+# nozzle_master.py
+# Cycles through decreasing supply pressures to simulate a single plenum discharge
+# Simulation parameters are set based on the gas type (programmed below).
+# For example, CO2 uses a nozzle of 0.6 mm throat diameter and 10 degree half-angle diverging section with expansion ratio of 1.17
+# Time step is calculated based on plenum volume, throat diameter, and pressure differential.
+# Requires the following Python libraries:
+#	matplotlib
+#	scipy
+#	pandas
+#	numpy
+#	seaborn
+
+# Previous versions included plotting functions in same script as simulation
+# Current version exports simulation results into .csv files. The user must then run the various 'plot_'... python scripts to plot the data.
+# Plotting functions remain intact here in case user wishes to plot thermodynamic phase change data (it looks cool)
+
+from nozzle_code_3 import nozzle
+import matplotlib as mpl
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 from scipy import stats
-import math
 import pandas as pd
 import numpy as np
-import sys
 import seaborn as sns
-from data_handling_funcs import *
-from matplotlib.lines import Line2D
+import scipy.optimize as opti
+from nozzle_helperFuncs import *
+
 
 ## ==================================================================================
-## ---- USER OPTIONS ----------------------------------------------------------------
+## ---- SIMULATION OPTIONS ----------------------------------------------------------
 ## ==================================================================================
 
-gas_type = 'CO2'				# Gas Choices: R236fa, R134a, N2, CO2, H2, air
-P_t_init = 114.7 * 6894.76  		# Init Total Pressure, units of Pa (psia * 6894.76)
-P_amb = 14.7 * 6894.76  			# Ambient Pressure, units of Pa (psia * 6894.76)
-T_t_init = 0 + 273.15  		# Init Total Temperature, units of K (C + 273.15)
-vol = 30 / 10**6  			# Plenum volume, units of m^3 (cm^3 / 10^6)
-d_star = 0.6 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
-cutoff_cond = 0.0001			# Cutoff condition, defined by the fractional change in pressure (relative to P_t_init) per second, units of 1/sec
-half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
-expansion_ratio = 1.17			# Nozzle expansion ratio (Exit Area / Throat Area)
-								# 	Inlet PSI ------- Ideal Expansion Ratio
-								# 		114.7 ------- 1.8048
-								# 		80 ---------- 1.6173
-								# 		65 ---------- 1.3225
-								#	Impulse is maximized (90.6 mN-s) when Exp Ratio = ~1.17 for CO2 @ 114.7psi in, 14.7 out, 0C, 25cc vol, 0.4mm dia, 10 deg half-angle
-								# 		1.17	90.6	100.0%
-								#		1.30	90.3	 99.7%
-								#		1.40	89.5	 98.8%
-								#		1.50	88.6	 97.8%
-								#		1.60	87.5	 96.6%
-								#		1.70	86.3	 95.3%
-								#		1.80	85.0	 93.8%
-								#		1.90	83.7	 
-								#		2.0		82.3
-figsize = (6, 5)				# Figure size (in)
-dpi = 150						# Figure dpi
+gas_types = ['CO2', 'R134a']	# Gasses to cycle through (currently only CO2 and R134a are available, based on the gas data programmed below)
+d_upstream = 2 / 1000			# Upstream "pipe" diameter (really just the valve orifice diameter), units of m (mm / 1000)
+T_wall_init = 293				# Valve brass body wall tempertaure used to evaluate heat transfer conductivity
+half_angle_conv = 110/2			# Half-angle of converging section
+
+# Choose state transition process. 'mass-energy-balance', 'isentropic', 'isenthalpic', 'isothermal'
+process = 'isentropic'
+
+# Include thermal model?
+thermal_model = False
 
 
 
 
 ## ==================================================================================
-## ---- SETUP PROPELLANT ------------------------------------------------------------
+## ---- PLOTTING OPTIONS ------------------------------------------------------------
+## ==================================================================================
+figsize = (6, 4)				# Figure size (in)
+dpi = 300						# Figure dpi
+
+# --------------------------------------------------------------------------------
+# Define a plot formatter and standardize plot formatting schemes
+class ScalarFormatterForceFormat(mpl.ticker.ScalarFormatter):
+		def _set_format(self):  # Override function that finds format to use.
+			self.format = "%1.1f"  # Give format here
+sns.axes_style("white")
+sns.set_style("whitegrid", {"xtick.major.size": 0, "ytick.major.size": 0, 'grid.linestyle': '--'})
+sns.set_context("paper", font_scale = 1, rc={"grid.linewidth": .5})
+# sns.set_palette("colorblind")
+# default_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+
+
+
+## ==================================================================================
+## ---- BEGIN DISCHARGE CODE --------------------------------------------------------
 ## ==================================================================================
 
-if gas_type == 'R236fa':
-	k = 1.083  # Heat capacity ratio (Cp/Cv)
-	R = 8.314/0.152039  # Specific gas constant (J/kg-K)
+# Set up Pandas DataFrame to store sim parameters
+all_parameters = pd.DataFrame(columns=[	'gas_type',
+										'Propellant',
+										'P_t_init',
+										'P_amb',
+										'T_t_init',
+										'vol',
+										'd_star',
+										'half_angle',
+										'expansion_ratio'])
 
-if gas_type == 'R134a':
-	gas_label = gas_type
-	right_limit = 40
-	k = 1.127  # Override value to compare results to MST paper
-	R = 8.314/0.10203  # Specific gas constant (J/kg-K)
-	T_trip = 169.85  # Triple point temperature (K)
-	P_trip = 389.56  # Triple point pressure (Pa)
+# Set up Pandas DataFrame to store aggregate data
+all_data = pd.DataFrame()
+sat_data = pd.DataFrame(['gas type', 'real temp', 'real pres', 'interpolated temp', 'interpolated pres'])
+all_supersonic_flow_regimes = ['Underexpanded', 'Perfectly Expanded', 'Overexpanded', 'Normal Shock']
 
-if gas_type == 'N2':
-	k = 1.039
-	R = 8.314/0.028014  # Specific gas constant (J/kg-K)
+# --------------------------------------------------------------------------------
+for gas_type in gas_types:
+	# Select gas properties
+	if gas_type == 'CO2':
+		gas_label = 'CO$_{2}$'
+		P_t_init = 114.7 * 6894.76  	# Init Total Pressure, units of Pa (psia * 6894.76)
+		P_amb = 14.7 * 6894.76  		# Ambient Pressure, units of Pa (psia * 6894.76)
+		cutoff_cond = 0.0001			# Cutoff condition, defined by the fractional change in pressure (relative to P_t_init) per second, units of 1/sec
+		cutoff_time = 1.4
+		T_t_init = 0.317 + 273.15  			# Init Total Temperature, units of K (C + 273.15)
+		vol = 30 / 10**6  				# Plenum volume, units of m^3 (cm^3 / 10^6)
+		d_star = 0.6 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
+		half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
+		expansion_ratio = 1.17			# Nozzle expansion ratio (Exit Area / Throat Area)
+		m_valve	= 70 / 1000				# Mass brass, kg
+		cp_valve = 380					# Specific heat capacity of brass, J/kg-K
+		L_upstream = 40 / 1000			# Upstream "pipe length" aka path length through valve. Just an estimate.	
+		right_limit = 1.4*((vol * 10**6)/30)*(d_star * 1000)/(0.6) # For X-axis time scale
+		visc_loss_param = 0.39			# As determined from NASA TN D-3056 (This stays pretty constant)
+		k = 1.289						# Specific heat ratio (NOT thermal conductivity)
+		R = 8.314/0.04401  				# Specific gas constant (J/kg-K)
+		L_lv = 574						# Enthalpy (latent heat) of vaporiation, kJ/kg
+		L_sl = 184						# Enthalpy (latent heat) of fusion, kJ/kg
+		L_sv = 571						# Enthalpy (latent heat) of sublimation, kJ/kg
+		T_trip = 216.58  				# Triple point temperature (K)
+		P_trip = 518500  				# Triple point pressure (Pa)
+		T_crit = 304.18					# Critical Temperature (K)
+		P_crit = 7382500				# Critical Pressure (Pa)
+		Z = 0.94						# Compressibility factor (doesn't vary much at such low pressures)
+		
+		fluid_props = pd.read_excel('gasProps/CO2_props_NIST.xlsx', sheet_name=None)
+		fluid_props_vol = pd.read_excel('gasProps/CO2_props_costVol_NIST.xlsx', sheet_name=None)
+
+
+	elif gas_type == 'R134a':
+		gas_label = 'R134a'
+		P_t_init = 82.9 * 6894.76  		# Init Total Pressure, units of Pa (psia * 6894.76)
+		P_amb = 0 * 6894.76  			# Ambient Pressure, units of Pa (psia * 6894.76)
+		cutoff_cond = 0.0001			# Cutoff condition, defined by the fractional change in pressure (relative to P_t_init) per second, units of 1/sec
+		cutoff_time = 28
+		T_t_init = 19.97+ 273.15  		# Init Total Temperature, units of K (C + 273.15)
+		vol = 10.0 / 10**6  			# Plenum volume, units of m^3 (cm^3 / 10^6)
+		d_star = 0.2 / 1000  			# Nozzle throat diameter, units of m (mm / 1000)
+		half_angle = 10  				# (Conical) Nozzle expansion angle (degrees)
+		expansion_ratio = 30			# Nozzle expansion ratio (Exit Area / Throat Area)
+		m_valve	= 1.5 / 1000			# Mass PBT, kg
+		cp_valve = 1445					# Specific heat capacity of PBT, J/kg-K
+		L_upstream = 7 / 1000			# Upstream "pipe length" aka path length through valve. Just an estimate.
+		right_limit = 28*((vol * 10**6)/11.2)*(d_star * 1000)/(0.212) # For X-axis time scale
+		visc_loss_param = 4.0			# As determined from NASA TN D-3056 (This varies a lot over Re numbers)
+		k = 1.127  						
+		R = 8.314/0.10203  				# Specific gas constant (J/kg-K)
+		T_trip = 169.85  				# Triple point temperature (K)
+		P_trip = 389.56  				# Triple point pressure (Pa)
+		Z = 1							# Compressibility factor (unknown, so for now = 1)
+
+		fluid_props = pd.read_excel('gasProps/R134a_props_NIST.xlsx', sheet_name=None)
+		fluid_props_vol = pd.read_excel('gasProps/R134a_props_const_vol_NIST.xlsx', sheet_name=None)
+
+
+	fg_pres_from_temp, fg_temp_from_pres, phase_data = create_phase_funcs(fluid_props, P_trip, T_trip)
+	visc_func = create_visc_func_gas(fluid_props)
 	
-if gas_type == 'CO2':
-	gas_label = 'CO$_{2}$'
-	right_limit = 1.3
-	k = 1.289
-	R = 8.314/0.04401  # Specific gas constant (J/kg-K)
-	T_trip = 216.58  # Triple point temperature (K)
-	P_trip = 518500  # Triple point pressure (Pa)
 
-if gas_type == 'H2':
-	k = 1.410
-	R = 8.314/0.002016  # Specific gas constant (J/kg-K)
+	cp_func = create_cp_func(fluid_props)
+	cv_func = create_cv_func(fluid_props)
+	ktc_func = create_ktc_func(fluid_props)
+	h_from_PT_gas_func = create_h_from_PT_gas_func(fluid_props)		# Returns kJ/kg for (Pa, K) input
+	u_from_PT_gas_func = create_u_from_PT_gas_func(fluid_props)		# Returns kJ/kg for (Pa, K) input
+	r_from_PT_gas_func = create_r_from_PT_gas_func(fluid_props)		# Returns g/ml for (Pa, K) input
 
-if gas_type == 'air':
-	k = 1.401
-	R = 8.314/0.0289645  # Specific gas constant (J/kg-K)
+	# Add r u data to "phase_data" (there's gotta be a better way)
+	phase_data['Internal Energy, v (kJ/kg)'] = [u_from_PT_gas_func(phase_data['Pressure (Pa)'].iloc[x], phase_data['Temperature (K)'].iloc[x])[0] for x in phase_data.index]
+	phase_data['Density, v (kg/m^3)'] = [r_from_PT_gas_func(phase_data['Pressure (Pa)'].iloc[x], phase_data['Temperature (K)'].iloc[x])[0]*1E3 for x in phase_data.index]
+	phase_data['Enthalpy, v (kJ/kg)'] = [h_from_PT_gas_func(phase_data['Pressure (Pa)'].iloc[x], phase_data['Temperature (K)'].iloc[x])[0] for x in phase_data.index]
 
-density_init = P_t_init/(R*(T_t_init))  # Units of kg/m^3 (or g/l)
-m_init = density_init*vol  # Units of kg
-dia = 2*(vol*(3/4)/math.pi)**(1/3)  # Plenum diatmer , units of m
-
-time_step_init = 15.28*vol*(P_t_init-P_amb)/((P_t_init*d_star)**2)
-
-
-## ==================================================================================
-## ---- INIT DATA LISTS -------------------------------------------------------------
-## ==================================================================================
-
-# list_of_P_ts = list(np.linspace (P_t_max, P_amb, no_of_points))
-list_of_P_ts = [P_t_init]  # These need to be prescribed at the first time step so the nozzle function can calculate the rest of the parameters at the same time step
-list_of_T_ts = [T_t_init]
-list_of_chamber_densities = [density_init]
-m_gas = [m_init]
-
-time = [0]
-
-list_of_mdots = []
-list_of_P_exits = []
-list_of_v_exits = []
-list_of_M_exits = []
-list_of_thrusts = []
-list_of_dthrust = []
-list_of_pressure_ratios = []
-list_of_P_stars = []
-list_of_T_stars = []
-list_of_rho_stars = []
-list_of_Re_stars = []
-list_of_T_exits = []
-list_of_rho_exits = []
-
-
-average_thrust = []
-cumulative_impulse = []
-ISP = []
-list_of_dthrust = []
-cumulative_mass = []
-delta_pres = 1
+	P_from_ru_func, T_from_ru_func = create_PT_from_ru_gas_func(fluid_props_vol)
+	P_from_rh_func, T_from_rh_func = create_PT_from_rh_gas_func(fluid_props_vol)
+	P_from_rT_func = create_P_from_rT_gas_func(fluid_props_vol)
 
 
 
+	# --------------------------------------------------------------------------------
+	# Calculate initial properties
+	rho_t_init = r_from_PT_gas_func(P_t_init, T_t_init)[0]*1000				# Initial density, kg/m^3 (or g/l), using REAL DATA
+	mu_t_init = 1/rho_t_init  												# Initial specific volume, m^3/kg (or l/g)
+	m_init = rho_t_init*vol  												# Initial propellant mass, kg
+	u_sp_init = u_from_PT_gas_func(P_t_init, T_t_init)[0]*1000				# Initial specific internal energy, J/kg
+	h_sp_init = h_from_PT_gas_func(P_t_init, T_t_init)[0]*1000				# Initial specific enthalpy, J/kg
+	dia = 2*(vol*(3/4)/np.pi)**(1/3)  										# Plenum diameter, m
+	time_step_init = 15.28*vol*(P_t_init-P_amb)/((P_t_init*d_star)**2)		# Time step, s
 
-## ==================================================================================
-## ---- EXECUTE LOOP ----------------------------------------------------------------
-## ==================================================================================
-# 0. Start with init P, T, m_gas
-# 1. Run nozzle given P, T
-# 2. Return m_dot, use to update m_gas assuming a specific time step
-# 3. Use m_gas to determine new density
-# 4. Use new density to update P, T assuming polytropic process + isentropic + ideal gas # NO NO NO. "isentropic" assumes NO EXCHANGE OF MATTER. THIS IS INVALID.
-# 5. Repeat 1-4 until P < 35
-i = 0
-n_max = 0
-end_loop_flag = False
-time_step = time_step_init
-
-while delta_pres > cutoff_cond and list_of_P_ts[-1] > P_amb:
-	m_dot, M_crit_sub, M_crit_sup, PR_crit_sub, PR_crit_sup, PR_exit_shock, M_exit_behindshock, M_exit, P_exit, v_exit, F, P_star, T_star, rho_star, Re_star, T_exit, rho_exit = nozzle(list_of_P_ts[-1], list_of_T_ts[-1], P_amb, d_star, expansion_ratio, half_angle, gas_type)
-
-	list_of_mdots.append(m_dot*1000)  # Units of g/s
-	list_of_P_exits.append(P_exit)
-	list_of_v_exits.append(v_exit)
-	list_of_M_exits.append(M_exit)
-	list_of_thrusts.append(F)
-	list_of_pressure_ratios.append(P_exit/list_of_P_ts[-1])
-	list_of_P_stars.append(P_star)
-	list_of_T_stars.append(T_star)
-	list_of_rho_stars.append(rho_star)
-	list_of_Re_stars.append(Re_star)
-	list_of_T_exits.append(T_exit)
-	list_of_rho_exits.append(rho_exit)
-
-	average_thrust.append( np.average(list_of_thrusts) )
-	ISP.append( 1000*list_of_thrusts[-1]/(9.81*list_of_mdots[-1]) )
-
-	if i == 0:  # If we're on the first time step...
-		list_of_dthrust.append(list_of_thrusts[-1]/time_step)  # Thrust starts here, so the abs. value will be positive and large. Doesn't matter what this actually is, though, because the end loop conditional won't ever see it
-		cumulative_impulse.append( time_step*list_of_thrusts[-1])
-	else:  # If we're on any other time step...
-		list_of_dthrust.append((list_of_thrusts[-1] - list_of_thrusts[-2])/time_step)
-		cumulative_impulse.append(time_step*list_of_thrusts[-1] + cumulative_impulse[-1])
-
-	# print('P_t: ' + str(round(list_of_P_ts[-1]/6894.76, 1)) + ' psia at ' + str(round(time[-1], 3)) + ' sec', end='\r', flush=True)
-
-	# Calculate these properties in preparation for the next loop. Loop will end if the newly calculated pressure drops below the ambient pressure.
-	m_gas.append(m_gas[-1] - m_dot*time_step) 
-	list_of_chamber_densities.append(m_gas[-1]/vol)
-	list_of_T_ts.append( list_of_T_ts[-1]*(list_of_chamber_densities[-1]/list_of_chamber_densities[-2])**(k-1) )
-	list_of_P_ts.append( list_of_P_ts[-1]*(list_of_chamber_densities[-1]/list_of_chamber_densities[-2])**k )
-	time.append(i*time_step)  # The first iteration is at t=0, so the first time[] entry will be 0.
-
-	# print('Avg thrust: ' + str(round(average_thrust[-1]*1000, 3)) + ' mN at ' + str(round(time[-1], 3)) + ' sec', end='\r', flush=True)
-
-	##### END LOOP CONDITIONALS TO CHECK FOR EXIT SHOCK#####
-	# if i>=2:  # Don't even bother checking end loop conditionals until after the first two iterations
-	# 	# Except for the first time step, dthrust should always be NEGATIVE. Also, dthrust should continue to get LESS NEGATIVE as time goes on (because chamber pressure is decreasing therefore thrust is decreasing too)
-	# 	if list_of_dthrust[-1] < list_of_dthrust[-2]:  # This should only occur ONCE, when a shock appears at the exit. It's at this point we expect the thrust to suddenly drop a LOT
-	# 		end_loop_flag = True  # Set this to true
-	# 		n_max = int(i + 5/time_step)
-	# 		print('Shock found!\n')
+	# Recalculate P_init based on rho_t_init and h_sp_init. I know it shouldn't be different, but it is, based on whichever function is being used (h_from_PT vs P_from_rh)
+	P_t_init = P_from_ru_func(rho_t_init, u_sp_init/1000)[0]*1000000
+	T_t_init = T_from_ru_func(rho_t_init, u_sp_init/1000)[0]
 
 
-	if i>=2:
-		delta_pres = np.absolute((list_of_P_ts[-2] - list_of_P_ts[-1])/P_t_init)/time_step
+	# --------------------------------------------------------------------------------
+	# Calculate full nozzle geometry, from converging section to exit
+	length_inlet = 0																				# Inlet length prior to converging section, m (mm / 1000)
+	length_conv = (((d_upstream/2) - d_star)/2) * np.tan(np.radians(90 - half_angle_conv))							# Converging section length, m
+	length_throat = 0 / 1000																				# Throat length (estimated), m
+	length_nozzle = ((np.sqrt(expansion_ratio*d_star**2) - d_star)/2) / np.tan(np.radians(half_angle))		# Nozzle length, m
+	total_length = length_inlet + length_conv + length_throat + length_nozzle
 
-	# 	if 1000*cumulative_impulse[-1] > 110 and 1000*cumulative_impulse[-2] < 110:
-	# 		n_target = i
-	# 		end_loop_flag = True
-	# 		n_max = int(i + 5/time_step)
-	# 		print('Target impulse reached!\n')
+	def area_ratio_at_pos(pos):
+		if pos <= length_inlet:
+			area_ratio = ((d_upstream/2)/d_star)**2
 
-	# if not end_loop_flag:  # If the end loop flag has not been set, then continue on as normal and increment the max steps
-	# 	n_max+=1
-	# else:
-	# 	pass
+		elif (pos > length_inlet) and (pos <= (length_inlet + length_conv)):
+			dist_from_throat = length_inlet + length_conv - pos
+			y = dist_from_throat / np.tan(np.radians(90 - half_angle_conv))
+			area_ratio = ((2*y + d_star)/d_star)**2
 
-	i+=1
+		elif pos > (length_inlet + length_conv) and pos <= (length_inlet + length_conv + length_throat):
+			area_ratio = 1
 
-	print('Time step: ' + str(round(time_step, 6)) + ' sec, P_t: ' + str(round(list_of_P_ts[-1]/ 6894.76, 1)) + ' psia, Change in pres: ' + str(round(delta_pres*100, 3)) + '%/sec ' + str(round(time[-1], 4)) + ' sec', end='\r', flush=True)
+		elif pos > (length_inlet + length_conv + length_throat) and pos <= total_length:
+			dist_from_throat = pos - (length_inlet + length_conv + length_throat)
+			y = dist_from_throat * np.tan(np.radians(half_angle))
+			area_ratio = ((2*y + d_star)/d_star)**2
 
-print('\n')
-# By the nature of this loop, anything that has an init value will end up with one extra element in its list
-# So we must manually remove the last element once all is said and done in order to make all the array lengths the same
-# This is due to the fact that the last element will be calculated for Pt < P_amb, which is not realistic.
-del m_gas[-1], list_of_chamber_densities[-1], list_of_T_ts[-1], list_of_P_ts[-1], time[-1]
+		else:
+			area_ratio = NaN
+
+		return area_ratio
+	
+	geometry_length = list(np.linspace(0, total_length, 5000))
+	geometry_ARs = [area_ratio_at_pos(x) for x in geometry_length]
+	geometry_rads = [d_star*np.sqrt(x)/2 for x in geometry_ARs]
+
+	# geo_length_plot = geometry_length.extend([geometry_length[-1], geometry_length[0], geometry_length[0]])
+	# geo_plot_rads = geometry_rads.extend([geometry_rads[0]*1.2, geometry_rads[0]*1.2, geometry_rads[0]])
+
+		
+
+	## ==================================================================================
+	## ---- INIT DATA LISTS -------------------------------------------------------------
+	## ==================================================================================
+	time = [0]
+	P_t_plenum		= [P_t_init] 
+	T_t_plenum		= [T_t_init]
+	rho_t_plenum 	= [rho_t_init]
+	mu_t_plenum 	= [mu_t_init]
+	u_sp_plenum 	= [u_sp_init]
+	h_sp_plenum 	= [h_sp_init]
+	list_of_qual_plenum = []
+
+	Re_upstream = []
+	Nu_upstream = []
+	Pr_upstream = []
+	visc_upstream 	= []
+	P_t_inlet		= [] 
+	T_t_inlet 		= []
+	T_inlet 		= []
+	rho_t_inlet 	= []
+	mu_t_inlet 		= []
+	M_inlet			= []
+
+	T_wall 			= [T_wall_init]
+	m_gas 			= [m_init]
+	list_of_mdots 	= []
+
+	list_of_P_stars = []
+	list_of_T_stars = []
+	list_of_rho_stars = []
+	list_of_M_stars = []
+	list_of_Re_stars = []
+
+	list_of_v_stars = []
+
+	list_of_P_exits = []
+	list_of_v_exits = []
+	list_of_c_exits = []
+	list_of_M_exits = []
+
+	list_of_thrusts = []
+	list_of_pressure_ratios = []
+	list_of_T_exits = []
+	list_of_rho_exits = []
+	list_of_CF_ideal = []
+	list_of_visc_losses = []
+	list_of_CF_eff = []
+	list_of_effective_thrusts = []
+	cumulative_effective_impulse = []
+	list_of_F_mdotv = []
+	list_of_F_pdiff = []
+
+	list_of_average_thrusts = []
+	cumulative_impulse = []
+	ISP = []
+	cumulative_mass = []
+
+	list_of_flow_regimes = [] 
+	list_of_area_ratios_at_shock = []
+	list_of_crit_area_ratios = []
+
+	list_of_P_fg_exit = []
+	list_of_T_fg_exit = []
+	list_of_P_fg_t = []
+	list_of_T_fg_t = []
+
+	iter = []
+
+	## ==================================================================================
+	## ---- HELPER FUNCTIONS ------------------------------------------------------------
+	## ==================================================================================
+	
+	# The common term seen in most Mach number relations, defined here as a function for ease
+	def Z_func(M):
+		Z = 1 + L*M**2
+		return Z
+
+	# Mach number-Temperature relation for Rayleigh flow
+	def rayleigh_machTempRelation(X, *S):
+		M1 = S[0]				# Mach number at station 1
+		T1 = S[1]				# Static temperature at station 1
+		T2 = S[2]				# Static temperature at station 2
+		f = ( ((1 + k*M1**2)/(1 + k*X))*(np.sqrt(X)/M1) )**2 - (T2/T1)
+		return f
+
+	# Gnielinski correlation for estimating the Nusselt number
+	def nusseltGnielinski(Re, Pr, f, d_upstream, L_upstream, T_upstream, T_wall):
+		Nu = (f/8)*(Re - 1000)*Pr*(1 + (d_upstream/L_upstream)**(2/3))*((T_upstream/T_wall)**0.45) / (1 + 12.7*np.sqrt(f/8)*((Pr**(2/3)) - 1))
+		return Nu
+
+	# Isentropic flow relation
+	def stream_props(mach_no, P_t, T_t):
+		# mach_no = supersonic_mach_anywhere(area_ratio)
+		pres = P_t * (1 + L*mach_no**2)**-W
+		temp = T_t * (1 + L*mach_no**2)**-1
+		c = np.sqrt(k*R*temp)
+		return pres, temp, c
+	
+	# def subsonic_mach_from_area(X, *S):
+	# Let's build a function to get subsonic mach given an area. You'd think this would be easy, but I guess it isn't. We'll use interp1d for it.
 
 
 
-## ==================================================================================
-## ---- POST-CALCULATIONS -----------------------------------------------------------
-## ==================================================================================
-
-# cumulative_impulse = []
-# cumulative_mass = []
-# average_thrust = []
-# time_offset = []
-# ISP = []
-
-# for i in range(0, len(time)-1):
-# 	time_offset.append( np.average([time[i], time[i+1]]) )
-# 	if i == 0:
-# 		cumulative_impulse.append( time_step*np.average([list_of_thrusts[i], list_of_thrusts[i+1]]) )
-# 		cumulative_mass.append( time_step*np.average([list_of_mdots[i], list_of_mdots[i+1]]) )
-# 	else:
-# 		cumulative_impulse.append( time_step*np.average([list_of_thrusts[i], list_of_thrusts[i+1]]) + cumulative_impulse[i-1] )
-# 		cumulative_mass.append( time_step*np.average([list_of_mdots[i], list_of_mdots[i+1]]) + cumulative_mass[i-1] )
-
-# 	average_thrust.append( np.average(list_of_thrusts[0:i+1]) )
-
-# for i in range(0, len(time)):
-# 	ISP.append( 1000*list_of_thrusts[i]/(9.81*list_of_mdots[i]) )
+	# area = S[0]
+	# m_dot = S[1]
+	# P_t = S[2]
+	# T_t = S[3]
+	# f = m_dot - (area*P_t/np.sqrt(T_t)) * np.sqrt(k/R) * np.sqrt(X) * (1 + L*X)**(-Q/2)
+	# return f
 
 
+
+	## ==================================================================================
+	## ---- MACH-AREA RELATION ----------------------------------------------------------
+	## ==================================================================================
+
+	# Nozzle Geometry
+	A_star = np.pi*(d_star**2)/4  					# Throat area
+	A_exit = A_star*expansion_ratio  				# Exit area
+	d_exit = np.sqrt(4*A_exit/np.pi)  				# Exit diameter (m)
+
+	# Common isentropic nozzle relationships rewritten in compact terms
+	P = (k+1)/2
+	L = (k-1)/2
+	W = k/(k-1)
+	Q = P/L  # aka (k+1)/(k-1)
+	S = (A_exit/A_star)**2
+	Y = np.sqrt(k/R)
+
+	# --------------------------------------------------------------------------------
+	# Solve the Isentropic Mach Number-Area relation for the (critical) Mach Numbers at the exit
+	# NOTE: This equation is only valid for fully subsonic OR fully supersonic flow throughout the entire nozzle
+	# It is not valid for the regime which includes a normal shock within the nozzle
+	# It will instead just determine the "boundaries" for the validity of the isentropic equations
+	# These values will be fed into the nozzle code and it will determine what's going on inside the nozzle
+	def machAreaRelation(X, S):
+		f = (1 + L*X)**Q - S*X*(P**Q)  # Where 'X' is M^2 and S is AREA RATIO SQUARED (so that this same function can be used for different area ratios i.e. along the length of the nozzle)
+		return f
+
+	x0 = np.array([0.00001, 20])	# List of M^2 to solve for roots over
+	sol0 = opti.fsolve(machAreaRelation, x0, args=S, maxfev=100000, full_output=False, xtol=0.000000001)	# Solve for M^2 given S as an extra argument
+
+	M_crit_sub = np.sqrt(sol0[0])  # Subsonic critical mach no.
+	M_crit_sup = np.sqrt(sol0[1])  # Supersonic critical mach no.
+
+
+	# --------------------------------------------------------------------------------
+	# Solve the same relation for the upstream subsonic Mach number through the valve (very approximate) so that you can get the static pressure and temperature of the upstream flow
+	# I approximate the Area Ratio as the area of the valve orifice to the nozzle throat area
+	A_upstream = np.pi*((d_upstream)**2)/4		# This is the CROSS-SECTIONAL AREA
+	S_upstream = (d_upstream/d_star)**2
+	sol1 = opti.fsolve(machAreaRelation, x0, args=S_upstream, maxfev=100000, full_output=False, xtol=0.000000001)	# Solve for M^2 given S as an extra argument
+
+	M_sub_upstream = np.sqrt(sol1[0])  # Subsonic critical mach no.
+	M_sup_upstream = np.sqrt(sol1[1])  # Supersonic critical mach no.
+
+
+	# This will be used to help us estimate the viscous losses
+	# I'm going to define a series of Mach vs. Area Ratio, then use some linear interpolation to determine a Mach number at a given area ratio (for viscous loss integral). Should only have to do this once.
+	# Currently not being used
+	range_of_subsonic_mach_nos = np.linspace(0.001, 1.0, 501)
+	range_of_supersonic_mach_nos = np.linspace(1.0, 5.1, 501)
+
+	range_of_subsonic_area_ratios = [np.sqrt( ((1 + L*x**2)**Q) / ((x**2)*(P**Q)) ) for x in range_of_subsonic_mach_nos]
+	range_of_supersonic_area_ratios = [np.sqrt( ((1 + L*x**2)**Q) / ((x**2)*(P**Q)) ) for x in range_of_supersonic_mach_nos]
+
+	subsonic_mach_anywhere = interp1d(range_of_subsonic_area_ratios, range_of_subsonic_mach_nos)
+	supersonic_mach_anywhere = interp1d(range_of_supersonic_area_ratios, range_of_supersonic_mach_nos)
+
+
+
+
+	## ==================================================================================
+	## ---- LOOP THROUGH SUPPLY PRESSURES -----------------------------------------------
+	## ==================================================================================
+	# Loop control items
+	i = 0
+	n_max = 0
+	end_loop_flag = False
+	time_step = time_step_init
+	delta_pres = 1
+
+	# Start with a P_t_init and T_t_init and repeatedly run the nozzle code
+	# Nozzle code will return throat and exit flow properties (along with thrust, ISP, impulse) based on supply properties
+	# Results are used to determine mass flow rate, which is then used to calculate new supply pressure
+	while delta_pres > cutoff_cond and P_t_plenum[-1] > P_amb and time[-1] < cutoff_time:
+		# --------------------------------------------------------------------------------
+		if thermal_model:
+			# Step 1: Get initial mass flow rate (This is for the FIRST time step only!)
+			if i == 0:
+				P_star, T_star, rho_star, Re_star, M_star, v_star, P_exit, T_exit, rho_exit, M_exit, v_exit, c_exit, m_dot, F, CF, flow_regime, area_ratio_at_shock, F_mdotv, F_pdiff = nozzle(k, R, M_crit_sub, M_crit_sup, P_t_init, T_t_init, rho_t_init, P_amb, d_star, expansion_ratio, half_angle, gas_type, visc_func, r_from_PT_gas_func)
+				list_of_mdots.append(m_dot*1000)
+
+			# Step 2: Calculate the upstream (i.e. "in") flow properties (temperature, pressure, viscosity)
+			T_upstream = T_t_plenum[-1]/Z_func(M_sub_upstream)
+			P_upstream = P_t_plenum[-1]/(Z_func(M_sub_upstream)**W)
+			visc_upstream.append(visc_func(P_upstream, T_upstream)[0] / 1000000)							# Convert from uPa-s to Pa-s (equivalent to kg/m-s), and pull value out of resultant array
+			
+			# Step 3: Calculate the upstream Reynolds number using the aforementioned flow properties
+			Re_upstream.append((list_of_mdots[-1]/1000)*d_upstream/(A_upstream*visc_upstream[-1]))
+			
+			# Step 4: Determine the Nusselt number. There are a few different ways but this seems to be the most legitimate method.
+			f = 0.07																						# Darcy friction factor. Just an estimate from Moody chart based on brass or steel or something similar.
+			# f = (0.79*np.log(Re_upstream[-1])-1.64)**-2													# Another way to estimate the Darcy friction factor. This version stays very low...like, between 0.023 and 0.035
+
+			cp_upstream = cp_func(P_upstream, T_upstream)[0] * 1000											# Specific heat at constant pressure, J/kg-K
+			ktc_upstream = ktc_func(P_upstream,  np.average([T_wall[-1], T_upstream]))[0]					# Thermal conductivity of fluid, W/m-K. (This value is typically evaluated at the average of the wall temperature and fluid temperature)
+			Pr_upstream.append(visc_upstream[-1] * cp_upstream / ktc_upstream)								# Prandtl number, though this stays almost entirely between 0.770 and 0.784, so maybe just used a fixed value...say, 0.777?
+
+			if Re_upstream[-1] >= 3000:
+				Nu_upstream.append( nusseltGnielinski(Re_upstream[-1], Pr_upstream[-1], f, d_upstream, L_upstream, T_upstream, T_wall[-1]) )				# Use the Gnielinski correlation to calculate the Nusselt number
+			else:
+				Nu_upstream.append(Nu_upstream[-1]*(list_of_mdots[-1]/list_of_mdots[-2]))					# Make the Nusselt number a linear function of mass flow rate
+
+			# Step 5: Determine the Heat Transfer Coefficient for convective heat transfer based on the definition of the Nusselt number
+			htc_upstream = Nu_upstream[-1] * ktc_upstream / L_upstream						# Heat transfer coefficient, W/m^2-K
+			
+			# Step 6: Calculate the heat rate
+			Q_dot_upstream = htc_upstream * (np.pi*d_upstream*L_upstream) * (T_wall[-1] - T_upstream)		# Heat rate, W (J/s)
+
+			# Step 7: Calculate the change in enthalpy of the fluid due to heating
+			delh_upstream = Q_dot_upstream / (list_of_mdots[-1]/1000)										# Change in specific enthalpy, J/kg
+			
+			# Step 8: Calculate the change in temperature (both of the fluid and of the wall) from the change in enthalpy
+			delT_through_valve = delh_upstream / cp_upstream
+			delT_wall = Q_dot_upstream*time_step / (m_valve*cp_valve)
+			
+			# Step 8.5a: Calculate alternate T_out and T_wall based on derivation you just made
+			Q_dot = htc_upstream * (np.pi*d_upstream*L_upstream) * (T_wall[-1] - T_upstream)				# Heat rate, W (J/s), using the wall temperature calculated on the previous loop
+			T_out = Q_dot * (1000/(Z*R*list_of_mdots[-1])) + T_upstream										# This assumes T_gas = T_upstream and is the least conservative estimate because the Delta-Temp will always be maximum
+
+			alpha = (htc_upstream*np.pi*d_upstream*L_upstream)/(2*Z*R*list_of_mdots[-1])					# Simplication for use in the "complex" formulation which uses the average of the inlet and outlet flow temperatures. Probably a little more accurate.
+			T_out_complex = (1/(1+alpha)) * (alpha*(2*T_wall[-1] - T_upstream) + T_upstream)
+
+			T_wall_new = (-Q_dot*time_step / (m_valve*cp_valve)) + T_wall[-1]
+
+			# Step 9: Calculate the fluid temperature coming out of the valve and pass that to the inlet of the nozzle. Use Rayleigh flow equations to calculate new fluid properties.
+			# T_inlet.append(T_upstream + delT_through_valve)
+			T_inlet.append(T_out)
+			T_wall.append(T_wall[-1] - delT_wall)
+
+			x1 = np.array([0.000001, 1])	# List of M to solve for roots over
+			sol2 = opti.fsolve(rayleigh_machTempRelation, x1, args=(M_sub_upstream, T_upstream, T_inlet[-1]), maxfev=100000, full_output=False, xtol=0.000000001)
+			M_inlet.append(np.sqrt(sol2[0]))
+
+			P_t_inlet.append( P_t_plenum[-1]*((1+k*M_sub_upstream**2)/(1+k*M_inlet[-1]**2))*((Z_func(M_inlet[-1]))/(Z_func(M_sub_upstream)))**W )
+			T_t_inlet.append(T_inlet[-1] * Z_func(M_inlet[-1]))
+			rho_t_inlet.append(r_from_PT_gas_func(P_t_inlet[-1], T_t_inlet[-1])[0]*1000)
+
+			if i == 0:
+				del(list_of_mdots[0])
+
+		else:
+			P_t_inlet.append(P_t_plenum[-1])
+			T_t_inlet.append(T_t_plenum[-1])
+			rho_t_inlet.append(rho_t_plenum[-1])
+			Re_upstream.append(0)
+			Nu_upstream.append(0)
+			Pr_upstream.append(0)
+			visc_upstream.append(0)	
+			T_inlet.append(0)
+			T_wall.append(0)
+			M_inlet.append(0)
+
+
+		# --------------------------------------------------------------------------------
+		# Now go through and calculate nozzle stuff (with or without thermally-updated T_t)
+		P_star, T_star, rho_star, Re_star, M_star, v_star, P_exit, T_exit, rho_exit, M_exit, v_exit, c_exit, m_dot, F, CF, flow_regime, area_ratio_at_shock, F_mdotv, F_pdiff = nozzle(k, R, M_crit_sub, M_crit_sup, P_t_inlet[-1], T_t_inlet[-1], rho_t_inlet[-1], P_amb, d_star, expansion_ratio, half_angle, gas_type, visc_func, r_from_PT_gas_func)
+
+
+		# --------------------------------------------------------------------------------
+		# Append returned items to their respective lists
+		list_of_P_stars.append(P_star)									# Throat Pressure, Pa
+		list_of_T_stars.append(T_star)									# Throat Temperature, K
+		list_of_rho_stars.append(rho_star)								# Throat Density, kg/m^s
+		list_of_Re_stars.append(Re_star)								# Throat Reynolds Number			
+		list_of_M_stars.append(M_star)									# Throat Mach No.
+		list_of_v_stars.append(v_star)									# Throat Velocity, m/s
+
+		list_of_P_exits.append(P_exit)									# Exit Pressure, Pa
+		list_of_T_exits.append(T_exit)									# Exit Temperature, K
+		list_of_rho_exits.append(rho_exit)								# Exit Density, kg/m^3
+		list_of_M_exits.append(M_exit)									# Exit Mach Number
+		list_of_v_exits.append(v_exit)									# Exit Velocity, m/s
+		list_of_c_exits.append(c_exit)									# Exit Speed of Sound, m/s
+
+		list_of_mdots.append(m_dot*1000)  								# Mass Flow Rate, g/s
+		list_of_thrusts.append(F)										# Thrust, N
+		list_of_CF_ideal.append(CF)								# Thrust Coefficient
+		list_of_flow_regimes.append(flow_regime)						# Exit Flow Regimes (underexpanded, perfectly expanded, weak shock outside, normal shock at exit, normal shock in nozzle, subsonic, no flow)
+		list_of_area_ratios_at_shock.append(area_ratio_at_shock)		# Area ratio of normal shock in nozzle, if it exists (otherwise None)
+		if area_ratio_at_shock is not None:
+			mach_no_before = supersonic_mach_anywhere(area_ratio_at_shock)
+			mach_no_after = np.sqrt( ((k-1)*mach_no_before**2 + 2)/(2*k*mach_no_before**2 - (k-1)) )
+			list_of_crit_area_ratios.append( (((1+L*mach_no_before**2)/(P*mach_no_before**2))**W) * ((k/P)*mach_no_before**2 - L/P)**(1/(k-1)) )
+		else:
+			list_of_crit_area_ratios.append(None)
+		list_of_F_mdotv.append(F_mdotv)									# Thrust due to momentum exchange, N
+		list_of_F_pdiff.append(F_pdiff)									# Thrust due to pressure differential, N
+
+		list_of_average_thrusts.append(np.average(list_of_thrusts))			# Time-average cumulative thrust, N
+		ISP.append( 1000*list_of_thrusts[-1]/(9.81*list_of_mdots[i]) )	# Specific Impulse, s
+
+		if i == 0:  # If we're on the first time step...
+			cumulative_impulse.append( time_step*list_of_thrusts[-1])
+		else:  # If we're on any other time step...
+			cumulative_impulse.append(time_step*list_of_thrusts[-1] + cumulative_impulse[-1])
+
+
+		# --------------------------------------------------------------------------------
+		# Determine the phase coexistence boundary at the exit
+		list_of_P_fg_exit.append(fg_pres_from_temp(T_exit))
+		list_of_T_fg_exit.append(fg_temp_from_pres(P_exit))
+
+
+		# --------------------------------------------------------------------------------
+		# Estimate viscous losses (based on NASA TN-)
+		# list_of_visc_losses.append(visc_loss_param/np.sqrt(Re_star*np.tan(np.radians(half_angle))))
+
+		# We're going to try estimating viscous losses the correct way now
+		# Calculate constants
+		mu_w = visc_func(list_of_P_stars[-1], T_wall[-1])[0]						# Pseudo-wall viscosity (using throat Pressure and valve wall temperature)
+		mu_star = visc_func(list_of_P_stars[-1], list_of_T_stars[-1])[0]			# Throat viscosity
+		f0 = k * np.sqrt( (mu_w/mu_star) * (list_of_rho_stars[-1]/rho_t_inlet[-1]) * np.sqrt(list_of_T_stars[-1]/T_t_inlet[-1]) ) / np.sqrt( 2*(T_wall[-1]/T_t_inlet[-1]) )
+
+		# Numerically integrate along length of nozzle
+		div_start = length_inlet + length_conv + length_throat
+		div_end = length_inlet + length_conv + length_throat + length_nozzle
+		nozzle_stations = np.linspace(div_start, div_end, 301)
+		step = nozzle_stations[1]-nozzle_stations[0]
+		integral_sum = 0
+
+		for pos in nozzle_stations[:-1]:
+			AR_pre = area_ratio_at_pos(pos)
+			AR_post = area_ratio_at_pos(pos+step)
+			AR_ave = area_ratio_at_pos(pos+(step/2))
+
+			if flow_regime in all_supersonic_flow_regimes:
+				mach_no = supersonic_mach_anywhere(AR_ave)
+				f1 = 1/np.sqrt(np.sqrt(AR_ave)-1)
+			elif flow_regime == 'Normal Shock in Nozzle':
+				if AR_ave <= area_ratio_at_shock:
+					mach_no = supersonic_mach_anywhere(AR_ave)
+					f1 = 1/np.sqrt(np.sqrt(AR_ave)-1)
+				else:
+					mach_no = subsonic_mach_anywhere(AR_ave/list_of_crit_area_ratios[-1])
+					f1 = 1/np.sqrt(np.sqrt(AR_ave/list_of_crit_area_ratios[-1])-1)
+			else:
+				mach_no = subsonic_mach_anywhere(AR_ave)
+				f1 = 1/np.sqrt(np.sqrt(AR_ave)-1)
+
+			T_ratio = (1 + L*mach_no**2)**-1
+			f2 = (mach_no**1.5)*T_ratio**(((5*k)-3)/(4*(k-1)))
+
+			integral_sum += f1*f2*(AR_post - AR_pre)
+		
+		list_of_visc_losses.append( integral_sum*0.664*f0/np.sqrt(list_of_Re_stars[-1]*np.tan(np.radians(half_angle))) )
+		list_of_CF_eff.append(CF-list_of_visc_losses[-1])
+		list_of_effective_thrusts.append(list_of_CF_eff[-1]*P_t_inlet[-1]*A_star)
+		if i == 0:  # If we're on the first time step...
+			cumulative_effective_impulse.append( time_step*list_of_effective_thrusts[-1])
+		else:  # If we're on any other time step...
+			cumulative_effective_impulse.append(time_step*list_of_effective_thrusts[-1] + cumulative_effective_impulse[-1])
+
+		# --------------------------------------------------------------------------------
+		# Calculate these properties in preparation for the next loop. Loop will end if the newly calculated pressure drops below the ambient pressure.
+		m_gas.append(m_gas[-1] - m_dot*time_step) 
+		rho_t_plenum.append(m_gas[-1]/(vol))
+		mu_t_plenum.append(1/rho_t_plenum[-1])
+
+		if process == 'mass-energy-balance':
+			# From mass and energy balance, and assuming the flow is isentropic (is it? Yes I believe it is. This model assumes it is NOT isentropic across the c.v., but it is isentropic afterwards, hence the "upstream" relations made here).
+			process_label = 'Conservation of Energy'
+			P_upstream = P_t_plenum[-1]*Z_func(M_sub_upstream)**-W									# Pa
+			T_upstream = T_t_plenum[-1]*Z_func(M_sub_upstream)**-1									# K
+			rho_upstream = rho_t_plenum[-1]*Z_func(M_sub_upstream)**-(W/k)
+
+			h_upstream = h_from_PT_gas_func(P_upstream, T_upstream)[0]*1000							# J/kg
+			v_upstream = M_sub_upstream*np.sqrt(k*R*T_upstream)										# m/s
+
+			# dE_dt = m_dot*(h_upstream + (v_upstream**2)/2)										# J/s
+			dE_dt = m_dot*(h_sp_plenum[-1])				# J/s, what if we did this instead? Basically assume that the enthalpy is the same for the gas leaving the volume? It makes almost no difference because the velocity component of enthalpy is extremely small (it's like Mach 0.15, so...)
+			delta_E = dE_dt*time_step																
+
+			u_sp_plenum.append( ((u_sp_plenum[-1]*m_gas[-2]) - delta_E)/m_gas[-1] )
+
+			P_from_ru = P_from_ru_func(rho_t_plenum[-1], u_sp_plenum[-1]/1000)[0]*1000000
+			P_t_plenum.append(P_from_ru)
+
+			# It is at this point that you must check the phase of the propellent in the plenum
+			plenum_phase = check_ru_phase(rho_t_plenum[-1], u_sp_plenum[-1]/1000, phase_data, P_from_ru_func, T_from_ru_func, P_trip, T_trip)
+			if plenum_phase == 'vapor':
+				T_from_ru = T_from_ru_func(rho_t_plenum[-1], u_sp_plenum[-1]/1000)[0]
+				T_t_plenum.append(T_from_ru)
+				list_of_qual_plenum.append(1)
+				h_sp_plenum.append( h_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000)					# J/s, calculate new specific enthalpy 
+
+				P_fg_t = fg_pres_from_temp(T_from_ru)															# Track the phase change pressure at given temperature
+				T_fg_t = fg_temp_from_pres(P_from_ru)															# Track the phase change temperature at given pressure
+
+			else:
+				T_t_plenum.append(fg_temp_from_pres(P_t_plenum[-1]))
+				h_sp_plenum.append( h_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000)
+
+				# Now let's determine the quality
+				# This will get you the Enthalpy of Sublimation at a given temperature (determined empircally using NIST data)
+				enth_of_sub = y = -0.2985*T_t_plenum[-1] + 644.19
+				
+				# Used for determine the quality
+				rho_temp = rho_t_plenum[-1]
+
+				# Get the enthalpy for the saturated vapor phase enthalpy at this given density
+				idx_of_closest_under = abs(phase_data[phase_data['Density, v (kg/m^3)'] < rho_temp]['Density, v (kg/m^3)'] - rho_temp).idxmin()
+				idx_of_closest_over = abs(phase_data[phase_data['Density, v (kg/m^3)'] > rho_temp]['Density, v (kg/m^3)'] - rho_temp).idxmin()
+
+				r_x1 = phase_data['Density, v (kg/m^3)'].iloc[idx_of_closest_under]
+				r_x2 = phase_data['Density, v (kg/m^3)'].iloc[idx_of_closest_over]
+				h_y1 = phase_data['Enthalpy, v (kJ/kg)'].iloc[idx_of_closest_under]
+				h_y2 = phase_data['Enthalpy, v (kJ/kg)'].iloc[idx_of_closest_over]
+				
+				m = (h_y2-h_y1)/(r_x2-r_x1)
+				h_v_sat = m*(rho_temp - r_x1) + h_y1
+
+				list_of_qual_plenum.append(1 - ((h_v_sat - h_sp_plenum[-1]/1000) / enth_of_sub))
+
+				P_fg_t = fg_pres_from_temp(T_t_plenum[-1])															# Track the phase change pressure at given temperature
+				T_fg_t = fg_temp_from_pres(P_t_plenum[-1])															# Track the phase change temperature at given pressure
+
+
+
+		elif process == 'isothermal':
+			# Isothermal process in plenum
+			process_label = 'Isothermal'
+			T_t_plenum.append( T_t_init )
+			P_t_plenum.append( P_from_rT_func(rho_t_plenum[-1], T_t_plenum[-1])[0]*1000000 )
+			u_sp_plenum.append( u_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000 )
+			h_sp_plenum.append( h_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000 )
+			P_fg_t = fg_pres_from_temp(T_t_plenum[-1])															# Track the phase change pressure at given temperature
+			T_fg_t = fg_temp_from_pres(P_t_plenum[-1])															# Track the phase change temperature at given pressure
+			list_of_qual_plenum.append(1)
+
+		elif process == 'isentropic':
+			# Isentropic process in plenum
+			process_label = 'Isentropic'
+			P_t_plenum.append( P_t_plenum[-1]*(rho_t_plenum[-1]/rho_t_plenum[-2])**k )
+			T_t_plenum.append( T_t_plenum[-1]*(rho_t_plenum[-1]/rho_t_plenum[-2])**(k-1) )
+			u_sp_plenum.append( u_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000 )
+			h_sp_plenum.append( h_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000 )
+			P_fg_t = fg_pres_from_temp(T_t_plenum[-1])															# Track the phase change pressure at given temperature
+			T_fg_t = fg_temp_from_pres(P_t_plenum[-1])															# Track the phase change temperature at given pressure
+			list_of_qual_plenum.append(1)
+
+		elif process == 'isenthalpic':
+			# Isenthalpic process in plenum
+			process_label = 'Isenthalpic'
+			h_sp_plenum.append( h_sp_init )
+			P_from_rh = P_from_rh_func(rho_t_plenum[-1], h_sp_plenum[-1]/1000)[0]*1000000
+			T_from_rh = T_from_rh_func(rho_t_plenum[-1], h_sp_plenum[-1]/1000)[0]
+			P_t_plenum.append(P_from_rh)
+			T_t_plenum.append(T_from_rh)
+			u_sp_plenum.append( u_from_PT_gas_func(P_t_plenum[-1], T_t_plenum[-1])[0]*1000 )
+			P_fg_t = fg_pres_from_temp(T_t_plenum[-1])															# Track the phase change pressure at given temperature
+			T_fg_t = fg_temp_from_pres(P_t_plenum[-1])															# Track the phase change temperature at given pressure
+			list_of_qual_plenum.append(1)
+		
+		else:
+			print('No state transition process defined!')
+			break
+		
+		list_of_P_fg_t.append(P_fg_t)
+		list_of_T_fg_t.append(T_fg_t)
+
+		time.append((i+1)*time_step)  # The first iteration is at t=0, so the first time[] entry will be 0.
+
+		# --------------------------------------------------------------------------------
+		# Loop counter to check cutoff condition
+		if i>=2:
+			delta_pres = np.absolute((P_t_plenum[-2] - P_t_plenum[-1])/P_t_init)/time_step
+		print('Time step: ' + str(round(time_step, 6)) + ' sec, P_t: ' + str(round(P_t_plenum[-1]/ 6894.76, 1)) + ' psia, Change in pres: ' + str(round(delta_pres*100, 3)) + '%/sec ' + str(round(time[-1], 4)) + ' sec', end='\r', flush=True)
+		iter.append(i)
+		i+=1
+	print('\n')
+
+	# By the nature of this loop, anything that has an init value will end up with one extra element in its list
+	# So we must manually remove the last element once all is said and done in order to make all the array lengths the same
+	del m_gas[-1], rho_t_plenum[-1], T_t_plenum[-1], P_t_plenum[-1], time[-1]
+
+
+
+	## ==================================================================================
+	## ---- ALL DATA SAVED TO PD DATAFRAME ----------------------------------------------
+	## ==================================================================================
+	single_sim_params = pd.DataFrame([[	gas_type,
+										gas_label,
+										P_t_init,
+										P_amb,
+										T_t_init,
+										vol,
+										d_star,
+										half_angle,
+										expansion_ratio]],
+							columns=[	'gas_type',
+										'Propellant',
+										'P_t_init',
+										'P_amb',
+										'T_t_init',
+										'vol',
+										'd_star',
+										'half_angle',
+										'expansion_ratio'])
+
+	all_parameters = all_parameters.append(single_sim_params)
+
+	current_data = pd.DataFrame(zip(time,
+									iter,
+									P_t_plenum, 
+									T_t_plenum, 
+									rho_t_plenum,
+									mu_t_plenum,
+									h_sp_plenum,
+									u_sp_plenum,
+									list_of_qual_plenum,
+
+									Re_upstream,
+									Nu_upstream,
+									Pr_upstream,
+									visc_upstream,
+
+									P_t_inlet, 
+									T_t_inlet,
+									T_inlet,
+									T_wall,
+									M_inlet,
+
+									list_of_P_stars, 
+									list_of_T_stars, 
+									list_of_rho_stars, 
+									list_of_Re_stars,
+									list_of_M_stars,
+									list_of_v_stars,
+
+									list_of_P_exits, 
+									list_of_T_exits,
+									list_of_rho_exits,
+									list_of_M_exits, 
+									list_of_v_exits, 
+									list_of_c_exits, 
+
+									m_gas,
+									list_of_mdots,
+									list_of_F_mdotv,
+									list_of_F_pdiff,
+									list_of_thrusts,
+									list_of_CF_ideal,
+									list_of_visc_losses,
+									list_of_CF_eff,
+									list_of_effective_thrusts,
+									list_of_average_thrusts,
+									[x*1000 for x in cumulative_impulse],
+									[x*1000 for x in cumulative_effective_impulse],
+									ISP,
+									list_of_flow_regimes,
+									list_of_area_ratios_at_shock,
+
+									list_of_P_fg_t,
+									list_of_T_fg_t,
+									list_of_P_fg_exit,
+									list_of_T_fg_exit),
+						columns = [	'time',
+									'iter',
+									'P_t',
+									'T_t',
+									'rho_t',
+									'mu_t',
+									'h_sp',
+									'u_sp',
+									'X',
+
+									'Re_up',
+									'Nu_up',
+									'Pr_up',
+									'visc_up',
+
+									'P_t_in',
+									'T_t_in',
+									'T_in',
+									'T_wall',
+									'M_in',
+
+									'P_star',
+									'T_star',
+									'rho_star',
+									'Re_star',
+									'M_star',
+									'v_star',
+
+									'P_exit',
+									'T_exit',
+									'rho_exit',
+									'M_exit',
+									'v_exit',
+									'c_exit',
+
+									'm_gas',
+									'mdot',
+									'F_mdotv',
+									'F_pdiff',
+									'thrust',
+									'CF_ideal',
+									'visc_losses',
+									'CF_eff',
+									'eff_thrust',
+									'avg_thrust',
+									'cum_impulse',
+									'cum_eff_impulse',
+									'ISP',
+									'flow regimes',
+									'area ratios at shock',
+
+									'P_fg_t',
+									'T_fg_t',
+									'P_fg_exit',
+									'T_fg_exit'])
+	current_data['gas_type'] = gas_type
+	current_data['Propellant'] = gas_label
+	current_data['P_trip'] = P_trip
+	current_data['T_trip'] = T_trip
+
+	if not current_data[current_data['flow regimes'] == 'No Flow'].empty:
+		idx_drop = current_data[current_data['flow regimes'] == 'No Flow'].index[0]
+		current_data.drop(idx_drop, inplace=True)
+
+	all_data = all_data.append(current_data, ignore_index=True)
+
+
+
+	# --------------------------------------------------------------------------------
+	# Create a plot of phase transition boundaries and overlay P-T path of propellant during discharge
+	fig, ax = plt.subplots(1, 1, figsize=(6,3), dpi=dpi)
+	ax.set_title(r'Phase Diagram and Plenum P-T Path ({})'.format(process_label))
+	# ax.set_title(r'({} at $P_0$={} kPa, $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(gas_label, 791, 273, vol*10**6, d_star*1000, expansion_ratio), fontsize=7)
+	ax.set_xlabel(r'Temperature, $K$')
+	ax.set_ylabel(r'Pressure, $Pa$')
+	ax.set(yscale="log")
+
+	# Plot phase data
+	sns.scatterplot(ax=ax, x='Temperature (K)', y='Pressure (Pa)', palette='colorblind', data=phase_data[phase_data['Dataset']=='NIST Data'], hue='Dataset', zorder=10)
+	sns.lineplot(ax=ax, x='Temperature (K)', y='Pressure (Pa)', palette='colorblind', data=phase_data[phase_data['Dataset']=='Extrapolated'], hue='Phase')
+
+	# Plot Plenum and Nozzle Exit P-T path
+	sim_flow = current_data[current_data['flow regimes'].isin(['Underexpanded', 'Overexpanded', 'Normal Shock', 'Normal Shock in Nozzle', 'Subsonic'])][['P_t', 'T_t', 'P_exit', 'T_exit']]
+	ax.plot(sim_flow['T_t'], sim_flow['P_t'], label='Plenum P-T Path', linestyle='--', color='orange')
+	# ax.plot(sim_flow['T_exit'], sim_flow['P_exit'], label='Exit P-T Path', linestyle='-.', color='crimson')
+
+	ax.plot(sim_flow['T_t'][0], sim_flow['P_t'][0], 'o', fillstyle='none', label='Start',markeredgecolor='green')
+	ax.plot(sim_flow['T_t'][-1:], sim_flow['P_t'][-1:], 'x', label='Finish', zorder=20, markeredgecolor='red')
+
+	# ax.plot(sim_flow['T_exit'][0], sim_flow['P_exit'][0], 'o', fillstyle='none', markeredgecolor='green')
+	# ax.plot(sim_flow['T_exit'][-1:], sim_flow['P_exit'][-1:], 'x', zorder=20, markeredgecolor='red')
+	
+
+	if gas_type == 'CO2':
+		ax.set_xlim([160, 280])
+		ax.set_ylim([80000, 1000000])
+
+		ax.text(185, 4.5E5, 'Solid Phase', style='italic', fontsize=7,
+			bbox={'facecolor': 'red', 'alpha': 0.2, 'pad': 5})
+		ax.text(215, 1.2E5, 'Vapor Phase', style='italic', fontsize=7,
+			bbox={'facecolor': 'red', 'alpha': 0.2, 'pad': 5})
+
+	if gas_type == 'R134a':
+		ax.set_xlim([150, 300])
+		ax.set_ylim([100, 1000000])
+
+	# Manually place the grid ticks
+	ax.set_yticks([1E5, 2E5, 4E5, 6E5, 8E5, 1E6], minor=False)
+	ax.yaxis.grid(True, which='major')
+
+	# Change tick formatting to make it look nicer
+	yfmt = ScalarFormatterForceFormat()
+	yfmt.set_powerlimits((0,0))
+	ax.xaxis.label.set_size(8)
+	ax.tick_params(axis='x', labelsize=7, pad=0)
+	ax.tick_params(axis='y', labelsize=7, pad=0)
+	ax.yaxis.set_major_formatter(yfmt)
+	ax.yaxis.offsetText.set_fontsize(6)
+	ax.ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
+
+	# Scale the y-axis so it's in more reasonable units. This only adjusts the labels, not the actual data.
+	# scale_y = 1E-3
+	# ticks_y = ticker.FuncFormatter(lambda x, pos: '{0:g}'.format(x/scale_y))
+	# ax.yaxis.set_major_formatter(ticks_y)
+	
+	# Manually adjust the legend labels
+	legend, handles = ax.get_legend_handles_labels()								# Get the legend and hadles so we can modify them
+	del legend[0], handles[0], legend[-2], handles[-2]								# Remove some of the dumb legend stuff that gets added by sns.scatterplot and sns.lineplot
+	legend = legend[-1:] + legend[:-1]												# Move the last element to the beginning
+	handles = handles[-1:] + handles[:-1]											# Move the last handle to the beginning
+	ax.legend(legend, handles, loc='lower right', fontsize=7, framealpha=0.9)		# Make a new legend with the modified handles
+
+	plt.tight_layout()
+
+
+
+
+	# --------------------------------------------------------------------------------
+	# Create a plot of u vs. rho to identify point of phase transition
+	fig, ax = plt.subplots(1, 1, figsize=(6,3), dpi=dpi)
+	ax.set_title(r'Plenum $\rho$-u Path ({})'.format(gas_label, process_label))
+	# ax.set(yscale="log")
+
+	# Plot phase data
+	sns.scatterplot(ax=ax, x='Internal Energy, v (kJ/kg)', y='Density, v (kg/m^3)', palette='colorblind', data=phase_data[phase_data['Dataset']=='NIST Data'], hue='Dataset', zorder=10)
+	sns.lineplot(ax=ax, x='Internal Energy, v (kJ/kg)', y='Density, v (kg/m^3)', palette='colorblind', data=phase_data[phase_data['Dataset']=='Extrapolated'], hue='Phase')
+
+	# Plot r-u path
+	sim_flow = current_data[current_data['flow regimes'].isin(['Underexpanded', 'Overexpanded', 'Normal Shock', 'Normal Shock in Nozzle', 'Subsonic'])][['u_sp', 'rho_t']]
+	ax.plot([x/1000 for x in sim_flow['u_sp']], sim_flow['rho_t'], label=r'Plenum, Total $\rho$-u Path', linestyle='--')
+	ax.plot([x/1000 for x in sim_flow['u_sp']][0], sim_flow['rho_t'][0], 'o', fillstyle='none', label='Start')
+	ax.plot([x/1000 for x in sim_flow['u_sp']][-1:], sim_flow['rho_t'][-1:], 'x', label='Finish')
+	
+	# Change tick formatting to make it look nicer
+	ax.xaxis.label.set_size(8)
+	ax.tick_params(axis='x', labelsize=6, pad=0)
+	ax.tick_params(axis='y', labelsize=6, pad=0)
+	yfmt = ScalarFormatterForceFormat()
+	yfmt.set_powerlimits((0,0))
+	ax.yaxis.set_major_formatter(yfmt)
+	ax.yaxis.offsetText.set_fontsize(6)
+	ax.ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
+	ax.set_xlabel(r'Internal Energy, $kJ/kg$')				# Gotta do it here because sns.lineplot takes over the formatting if you do it before. I think.
+	ax.set_ylabel(r'Density, $kg/m^{3}$')
+	
+	legend, handles = ax.get_legend_handles_labels()		# Get the legend and hadles so we can modify them
+
+	if gas_type == 'CO2':
+		ax.set_xlim([350, 430])
+		ax.set_ylim([2, 17])
+
+		handles[1] = 'Saturated Vapor-Solid Boundary'
+		handles[2] = 'Saturated Liquid Boundary'
+		handles[3] = 'Saturated Vapor Boundary'
+		del legend[0], handles[0], legend[-2], handles[-2]		# Remove some of the dumb legend stuff that gets added by sns.scatterplot and sns.lineplot
+		legend = legend[-1:] + legend[:-1]						# Move the last element to the beginning
+		handles = handles[-1:] + handles[:-1]					# Move the last handle to the beginning
+		ax.legend(legend, handles, loc='upper left')			# Make a new legend with the modified handles
+
+		ax.text(408, 6.5, 'Vapor Phase', style='italic',
+			bbox={'facecolor': 'red', 'alpha': 0.2, 'pad': 7})
+		ax.text(354, 5.5, 'Two-Phase Solid/Vapor', style='italic',
+			bbox={'facecolor': 'red', 'alpha': 0.2, 'pad': 7})
+
+	if gas_type == 'R134a':
+		ax.set_xlim([300, 400])
+		ax.set_ylim([-1, 23])
+
+		handles[1] = 'Saturated Vapor-Solid Boundary'
+		handles[2] = 'Saturated Liquid Boundary'
+		handles[3] = 'Saturated Vapor Boundary'
+		del legend[0], handles[0], legend[-2], handles[-2]		# Remove some of the dumb legend stuff that gets added by sns.scatterplot and sns.lineplot
+		legend = legend[-1:] + legend[:-1]						# Move the last element to the beginning
+		handles = handles[-1:] + handles[:-1]					# Move the last handle to the beginning
+		ax.legend(legend, handles, loc='upper left')			# Make a new legend with the modified handles
+
+		ax.text(328, 8, 'Two-Phase Liquid/Vapor', style='italic',
+			bbox={'facecolor': 'red', 'alpha': 0.2, 'pad': 7})
+		ax.text(375, 2, 'Vapor Phase', style='italic',
+			bbox={'facecolor': 'red', 'alpha': 0.2, 'pad': 7})
+
+	plt.tight_layout()
+	# plt.show()
+
+
+
+all_parameters = all_parameters.set_index('gas_type')
+all_parameters.to_csv('simulation_parameters.csv', index=True)
+all_data.to_csv('simulation_data.csv', index=False)
 
 
 ## ==================================================================================
 ## ---- PLOT ------------------------------------------------------------------------
 ## ==================================================================================
-
 # ---- Plot 2x3 [Thrust, Impulse, ISP, Re, Ma, Density] all vs. Inlet + Throat + Exit Pressure
-
 linewidth = 2
-fontsize = 12
+fontsize = 8
 
-data = 		{ 
-			  'pressure': [x/1000 for x in list_of_P_ts],
-			  'thrust': [x*1000 for x in list_of_thrusts], 
-			  'impulse': [x*1000 for x in cumulative_impulse], 	
-			#   'isp': ISP, 			
-			#   'mach_exit': list_of_M_exits, 		
-			#   'P_exit': [x/1000 for x in list_of_P_exits],	
-			#   'reynolds': [x/1000 for x in list_of_Re_stars],
-			#   't_exit': list_of_T_exits,
-			#   'm_dot': list_of_mdots
+data = 	{ 
+			'P_t': 				all_data['P_t'],
+			# 'T_t': 				all_data['T_t'],
+			# 'rho_t':			all_data['rho_t'],
+			# 'mu_t':				all_data['mu_t'],
+			# 'h_sp':				all_data['h_sp'],
+			# 'u_sp':				all_data['u_sp'],
+			# 'X':				all_data['X'],
+
+			# 'Re_up':			all_data['Re_up'],
+			# 'Nu_up':			all_data['Nu_up'],
+			# 'Pr_up':			all_data['Pr_up'],
+			# 'visc_up':			all_data['visc_up'],
+
+			# 'P_t_in': 			all_data['P_t_in'],
+			# 'T_t_in': 			all_data['T_t_in'],
+			# 'T_in': 			all_data['T_in'],
+			# 'T_wall':			all_data['T_wall'],
+			# 'M_in':				all_data['M_in'],
+
+			# 'P_star': 		all_data['P_star'],
+			# 'T_star': 		all_data['T_star'],
+			# 'rho_star': 		all_data['rho_star'],
+			# 'Re_star': 		all_data['Re_star'],
+			# 'M_star': 			all_data['M_star'],
+			# 'v_star': 			all_data['v_star'],
+
+			# 'P_exit': 		all_data['P_exit'],
+			# 'T_exit': 		all_data['T_exit'],
+			# 'rho_exit': 		all_data['rho_exit'],
+			# 'M_exit': 		all_data['M_exit'], 
+			# 'v_exit': 		all_data['v_exit'],
+			# 'c_exit': 		all_data['c_exit'],
+
+			# 'm_gas': 			all_data['m_gas'],
+			# 'mdot': 			all_data['mdot'],
+			# 'F_mdotv': 		all_data['F_mdotv'], 
+			# 'F_pdiff': 		all_data['F_pdiff'], 
+			'thrust': 		all_data['thrust'],
+			# 'CF_ideal': 	all_data['CF_ideal'],
+			# 'visc_losses': 		all_data['visc_losses'],
+			# 'CF_eff': 		all_data['CF_eff'],
+			# 'eff_thrust':	all_data['eff_thrust'],
+			'avg_thrust': 	all_data['avg_thrust'],
+			'cum_impulse': 	all_data['cum_impulse'],
+			# 'cum_eff_impulse': 	all_data['cum_eff_impulse'],
+			# 'ISP': 			all_data['ISP'],
+			# 'ARs at shock':	all_data['area ratios at shock']
+
+			# 'P_fg_exit':		all_data['P_fg_t'],
+			# 'T_fg_exit':		all_data['T_fg_t'],
+			# 'P_fg_exit':		all_data['P_fg_exit'],
+			# 'T_fg_exit':		all_data['T_fg_exit'],
 			  }
 
-figname = 	{
-			  'pressure': 'Pressure',
-			  'thrust': 'Thrust', 							
-			  'impulse': 'Net Impulse', 							
-			  'isp': '$I_{SP}$', 			
-			  'mach_exit': 'Exit Mach Number', 	
-			  'P_exit': 'Exit Pressure', 		
-			  'reynolds': 'Throat Reynold\'s Number',
-			  't_exit': 'Exit Temperature',
-			  'm_dot': 'Mass Flow Rate'
-			}
+figname = { 
+			'P_t': 				'Plenum Total Pressure',
+			'T_t': 				'Plenum Total Temperature', 							
+			'rho_t': 			'Plenum Total Density',
+			'mu_t': 			'Plenum Total Specific Volume',
+			'h_sp':				'Specific Enthalpy',
+			'u_sp':				'Specific Internal Energy',
+			'X':				'Plenum Vapor Quality',
 
-times = 	{ 
-			  'pressure': time,
-			  'thrust': time, 								
-			  'impulse': time, 							
-			  'isp': time, 			
-			  'mach_exit': time, 					
-			  'P_exit': time, 					
-			  'reynolds': time,
-			  't_exit': time,
-			  'm_dot': time
-			}
+			'Re_up':			'Upstream Reynolds No.',
+			'Nu_up':			'Upstream Nusselt No.',
+			'Pr_up':			'Upstream Prandtl No.',
+			'visc_up':			'Upstream Viscosity',
 
-ylabels = 	{ 
-			  'pressure': 'Pressure, $kPa$',
-			  'thrust': 'Thrust, $mN$', 						
-			  'impulse': 'Impulse, $mN-s$', 						
-			  'isp': '$I_{SP}$, $s$', 		
-			  'mach_exit': 'Mach', 				
-			  'P_exit': 'Pressure, $kPa$', 	
-			  'reynolds': 'Re x $10^3$',
-			  't_exit': 'Temperature, $K$',
-			  'm_dot': 'Mass Flow Rate, $g/s$'
-			}
+			'P_t_in':			'Inlet Total Pressure',
+			'T_t_in':			'Inlet Total Temperature', 
+			'T_in':				'Inlet Static Temperature', 
+			'T_wall':			'Wall Temperature',
+			'M_in':				'Inlet Mach No.',						
 
-# legend = 	{ 'thrust': 'Thrust', 							
-# 			  'impulse': 'Net Impulse', 							
-# 			  'isp': '$I_{SP}$', 			
-# 			  'mach_exit': 'Exit Mach Number', 	
-# 			  'rho_star': 'Throat Density', 		
-# 			  'reynolds': 'Throat Reynold\'s Number' }
+			'P_star': 			'Throat Pressure',
+			'T_star': 			'Throat Temperature',
+			'rho_star': 		'Throat Density', 		
+			'Re_star': 			'Throat Reynold\'s No.',
+			'M_star': 			'Throat Mach No.',
+			'v_star': 			'Throat Velocity',
 
-# colors = 	{ 'thrust': '#ff7f0e', 							
-# 			  'impulse': '#ff7f0e', 								
-# 			  'isp': '#ff7f0e', 		
-# 			  'mach_exit': '#ff7f0e', 			
-# 			  'rho_star': '#ff7f0e', 				
-# 			  'reynolds': '#ff7f0e' }
+			'P_exit': 			'Exit Pressure',
+			'T_exit': 			'Exit Temperature',
+			'rho_exit': 		'Exit Density', 		
+			'M_exit': 			'Exit Mach No.', 	
+			'v_exit': 			'Exit Velocity', 	
+			'c_exit': 			'Exit Speed of Sound', 	
 
-num_rows = 3
-num_cols = 1
-# figsize = ((8.5/2)*num_cols, (11/4)*num_rows+0.5)				# Figure size (in)
+			'm_gas': 			'Propellant Mass',
+			'mdot': 			'Mass Flow Rate',
+			'F_mdotv': 			'Thrust From mdot',
+			'F_pdiff': 			'Thrust From pdiff',
+			'thrust': 			'Instantaneous Thrust', 							
+			'CF_ideal': 	'Ideal Thrust Coefficient',
+			'visc_losses': 		'Viscous Loss Percentage',
+			'CF_eff':		'Effective Thrust Coefficient',
+			'eff_thrust':	'Effective Thrust',
+			'avg_thrust': 		'Time Average Thrust',
+			'cum_impulse': 		'Net Impulse',
+			'cum_eff_impulse':	'Net Effective Impulse',
+			'ISP': 				'$I_{SP}$',
+			'ARs at shock':		'Area Ratio at Shock',
 
-fig, axs = plt.subplots(num_rows, num_cols, figsize=figsize, dpi=dpi)
-for i, j in enumerate(data.items()):
-	if num_rows > 1 and num_cols > 1:
-		row = math.floor(i/2 % (len(data)/2))
-		col = i % num_cols
-		row_col = (row, col)
-	else:
-		row_col = (i)
+			'P_fg_t':			'Saturated Vapor Pressure at Current',
+			'T_fg_t':			'Saturated Vapor Temperature at Current',
+			'P_fg_exit':		'Saturated Vapor Pressure at Exit',
+			'T_fg_exit':		'Saturated Vapor Temperature at Exit'
+		  }
 
-	# --- For Pressure on Secondary Axis ----
-	axs[row_col].plot(times[j[0]], data[j[0]], color='#1f77b4', label=ylabels[j[0]], linestyle='-', linewidth=linewidth)
-	axs[row_col].set_title(figname[j[0]])
-	axs[row_col].set_xlabel('Time, $s$', color='#413839', fontsize=fontsize)
-	axs[row_col].set_ylabel(ylabels[j[0]], color='#413839', fontsize=fontsize)
-	axs[row_col].tick_params(colors='#413839')
-	axs[row_col].set_ylim(bottom=0)
-	
-	if j[0] == 'P_exit':
-		axs[row_col].plot([times[j[0]][0], times[j[0]][-1]], [P_trip/1000, P_trip/1000], color='#FF0000', label='Critical Pressure', linestyle='-', linewidth=linewidth)
-	if j[0] == 't_exit':
-		axs[row_col].plot([times[j[0]][0], times[j[0]][-1]], [T_trip, T_trip], color='#FF0000', label='Critical Temperature', linestyle='-', linewidth=linewidth)
-	if j[0] == 'thrust':
-		axs[row_col].plot(times[j[0]], [x*1000 for x in average_thrust], color='#FF0000', label='Avg Thrust', linestyle='--', linewidth=linewidth)
+times = {
+			'P_t': 				all_data['time'],
+			'T_t': 				all_data['time'],
+			'rho_t':			all_data['time'],
+			'mu_t':				all_data['time'],
+			'h_sp':				all_data['time'],
+			'u_sp':				all_data['time'],
+			'X':				all_data['time'],
 
-	# second_ax = axs[row_col].twinx()
-	# line1, = second_ax.plot(time, [x/1000 for x in list_of_P_ts], color='#1f77b4', label='pres_inlet', linestyle='-', linewidth=linewidth)
-	# line2, = second_ax.plot(time, [x/1000 for x in list_of_P_stars], color='#1f77b4', label='pres_throat', linestyle=':', linewidth=linewidth)
-	# line3, = second_ax.plot(time, [x/1000 for x in list_of_P_exits], color='#1f77b4', label='pres_exit', linestyle='--', linewidth=linewidth)
-	# second_ax.set_ylabel('Pressure, kPa', color='#413839', fontsize=fontsize)
-	# second_ax.tick_params(colors='#413839')
+			'Re_up':			all_data['time'],
+			'Nu_up':			all_data['time'],
+			'Pr_up':			all_data['time'],
+			'visc_up':			all_data['time'],
+
+			'P_t_in':			all_data['time'],
+			'T_t_in':			all_data['time'],
+			'T_in':				all_data['time'],
+			'T_wall':			all_data['time'],
+			'M_in':				all_data['time'],
+
+			'P_star': 			all_data['time'],
+			'T_star': 			all_data['time'],
+			'rho_star': 		all_data['time'],
+			'Re_star': 			all_data['time'],
+			'M_star': 			all_data['time'],
+			'v_star': 			all_data['time'],
+
+			'P_exit': 			all_data['time'],
+			'T_exit': 			all_data['time'],
+			'rho_exit': 		all_data['time'],
+			'M_exit': 			all_data['time'],
+			'v_exit': 			all_data['time'],
+			'c_exit': 			all_data['time'],
+
+			'm_gas': 			all_data['time'],
+			'mdot': 			all_data['time'],
+			'F_mdotv': 			all_data['time'],
+			'F_pdiff': 			all_data['time'],
+			'thrust': 			all_data['time'],
+			'CF_ideal': 	all_data['time'],
+			'visc_losses': 		all_data['time'],
+			'CF_eff': 		all_data['time'],
+			'eff_thrust': 		all_data['time'],
+			'avg_thrust': 		all_data['time'],
+			'cum_impulse': 		all_data['time'],
+			'cum_eff_impulse': 		all_data['time'],
+			'ISP': 				all_data['time'],
+			'ARs at shock': 	all_data['time'],
+
+			'P_fg_t':	 	all_data['time'],
+			'T_fg_t':	 	all_data['time'],
+			'P_fg_exit': 	all_data['time'],
+			'T_fg_exit': 	all_data['time']
+		}
+
+ylabels = {
+			'P_t': 				'Plenum Total Pres, $Pa$',
+			'T_t': 				'Plenum Total Temp, $K$', 						
+			'rho_t': 			'Plenum Total Dens, $kg/m^3$',
+			'mu_t': 			'Plenum Total Sp. Vol, $m^3/kg$',
+			'h_sp':				'Specific Enthalpy, $kJ/kg$',
+			'u_sp':				'Specific Internal Energy, $kJ/kg$',
+			'X':				'Plenum Quality',
+
+			'Re_up':			'Upstream Reynolds No.',
+			'Nu_up':			'Upstream Nusselt No.',
+			'Pr_up':			'Upstream Prandtl No.',
+			'visc_up':			'Upstream Viscosity, $Pa-s$',
+
+			'P_t_in':			'Inlet Total Pres, $Pa$',
+			'T_t_in':			'Inlet Total Temp, $K$', 						
+			'T_in':				'Inlet Static Temp, $K$', 						
+			'T_wall':			'Wall Temp, $K$',
+			'M_in':				'Inlet Mach No.',
+
+			'P_star': 			'Throat Pressure, $Pa$',
+			'T_star': 			'Throat Temperature, $K$',
+			'rho_star': 		'Throat Density, $kg/m^3$', 		
+			'Re_star': 			'Throat Reynold\'s No.',
+			'M_star': 			'Throat Mach No.', 				
+			'v_star': 			'Throat Velocity, $m/s$', 				
+
+			'P_exit': 			'Exit Pressure, $Pa$',
+			'T_exit': 			'Exit Temperature, $K$',
+			'rho_exit': 		'Exit Density, $kg/m^3$',
+			'M_exit': 			'Exit Mach No.', 				
+			'v_exit': 			'Exit Velocity, $m/s$', 				
+			'c_exit': 			'Exit Speed of Sound, $m/s$', 				
+
+			'm_gas':			'Propellant Mass, $g$',
+			'mdot': 		   r'Mass Flow Rate ($\dot{m}$), $g/s$',
+			'F_mdotv': 			'Thrust from mdot, $mN$', 
+			'F_pdiff': 			'Thrust from pdiff, $mN$', 
+			'thrust': 			'Thrust, $mN$',
+			'CF_ideal':	   r'Ideal Thrust Coefficient, $C_f$',
+			'visc_losses': 	   r'Viscous Losses, $C_{f_v}$',
+			'CF_eff': 	   r'Effective Thrust Coefficient',
+			'eff_thrust':		'Effective Thrust, $mN$',
+			'avg_thrust':		'Time Average Thrust, $mN$',
+			'cum_impulse': 		'Impulse, $mN-s$',
+			'cum_eff_impulse': 		'Effective Impulse, $mN-s$',
+			'ISP': 				'$I_{SP}$, $s$', 		
+			'ARs at shock':	   r'Area Ratio, $\lambda$',
+
+			'P_fg_t':			'Saturated Pressure, $Pa$',
+			'T_fg_t':			'Saturated Temperature, $K$',
+			'P_fg_exit':		'Saturated Pressure, $Pa$',
+			'T_fg_exit':		'Saturated Temperature, $K$',
+		   }
+
+legend_locs = {
+			'P_t': 				'upper right',
+			'T_t': 				'upper right',
+			'rho_t':			'upper right',
+			'mu_t':				'upper right',
+			'h_sp':				'upper right',
+			'u_sp':				'upper right',
+			'X':				'upper right',
+
+			'Re_up':			'upper right',
+			'Nu_up':			'upper right',
+			'Pr_up':			'upper right',
+			'visc_up':			'upper right',
+
+			'P_t_in':			'upper right',
+			'T_t_in':			'upper right',
+			'T_in':				'upper right',
+			'T_wall':			'upper right',
+			'M_in':				'upper right',
+
+			'P_star': 			'upper right',
+			'T_star': 			'upper right',
+			'rho_star': 		'upper right',
+			'Re_star': 			'upper right',
+			'M_star': 			'upper right',
+			'v_star': 			'upper right',
+
+			'P_exit': 			'upper right',
+			'T_exit': 			'upper right',
+			'rho_exit': 		'upper right',
+			'M_exit': 			'upper right',
+			'v_exit': 			'upper right',
+			'c_exit': 			'upper right',
+
+			'm_gas': 			'upper right',
+			'mdot': 			'upper right',
+			'F_mdotv': 			'upper right',
+			'F_pdiff': 			'upper right',
+			'thrust': 			'upper right',
+			'CF_ideal': 	'upper right',
+			'visc_losses': 		'upper left',
+			'CF_eff': 		'upper right',
+			'eff_thrust': 		'upper right',
+			'avg_thrust': 		'upper right',
+			'cum_impulse': 		'lower right',
+			'cum_eff_impulse': 		'lower right',
+			'ISP': 				'upper right',
+			'ARs at shock': 	'upper right',
+
+			'P_fg_t':	 	'upper right',
+			'T_fg_t':	 	'upper right',
+			'P_fg_exit': 	'upper right',
+			'T_fg_exit': 	'upper right'
+		}
+
+titles = { 	
+			'CO2': 'On-Ground Single Plenum Discharge Reynolds Number',
+			'R134a': 'In-Space Single Plenum Discharge Reynolds Number'
+		 }
+
+# --------------------------------------------------------------------------------
+# Generic subplots of whatever is in 'data'
 
 
-	# --- For Pressure on Primary Axis ----
-	# axs[row_col].plot(time, [x/1000 for x in list_of_P_ts], color='#1f77b4', label='Inlet Pressure, kPa', linestyle='-', linewidth=linewidth)
-	# axs[row_col].plot(time, [x/1000 for x in list_of_P_stars], color='#1f77b4', label='Throat Pressure, kPa', linestyle=':', linewidth=linewidth)
-	# axs[row_col].plot(time, [x/1000 for x in list_of_P_exits], color='#1f77b4', label='Exit Pressure, kPa', linestyle='--', linewidth=linewidth)
-	# axs[row_col].set_title(figname[j[0]])
-	# axs[row_col].set_xlabel('Time, $s$', color='#413839', fontsize=fontsize)
-	# axs[row_col].set_ylabel('Pressure, kPa', color='#413839', fontsize=fontsize)
-	# axs[row_col].tick_params(colors='#413839')
 
-	# second_ax = axs[row_col].twinx()
-	# second_ax.plot(times[j[0]], data[j[0]], color='#ff7f0e', label=ylabels[j[0]], linestyle='-.', linewidth=linewidth)
-	# second_ax.set_ylabel(ylabels[j[0]], color='#413839', fontsize=fontsize)
-	# second_ax.tick_params(colors='#413839')
-	# second_ax.set_ylim(bottom=0)
 
-	# box = axs[row_col].get_position()
-	# axs[row_col].set_position([box.x0, box.y0, box.width * 1.05, box.height * 1.1])
-	# axs[row_col].grid(which='major', axis='both', linestyle='--')
+# --------------------------------------------------------------------------------
+# Let's plot Re of both gasses on one figure with two subplots of differing time scales and make sure you include ax.set_titles
+fig, ax = plt.subplots(2,1, figsize=(6, 4.5), dpi=300)
+fig.suptitle(r'Throat Reynolds Number for CO$_2$ and R134a', y=0.98)
+for i, gas in enumerate(gas_types):
+	ax[i].set_title(r'{} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={}'.format(all_parameters.loc[gas]['Propellant'], round(all_parameters.loc[gas]['T_t_init'], 2), all_parameters.loc[gas]['vol']*10**6, all_parameters.loc[gas]['d_star']*1000, all_parameters.loc[gas]['expansion_ratio']), fontsize=7)
+	ax[i].plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas]['Re_star'])
+	ax[i].set_ylabel(r'Reynolds No. ({})'.format(all_parameters.loc[gas]['Propellant']), color='#413839', fontsize=fontsize)
+	ax[i].set_xlim(left=0)
 
-# if num_rows > 1 and num_cols > 1:
-# 	axs[0, 0].plot(time, [x*1000 for x in average_thrust], linestyle='--')
-# else:
-# 	axs[0].plot(time, [x*1000 for x in average_thrust], linestyle='--')
+	yfmt = ScalarFormatterForceFormat()
+	yfmt.set_powerlimits((0,0))
+	ax[i].yaxis.set_major_formatter(yfmt)
+	ax[i].ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
+	ax[i].tick_params(axis='y', labelsize=6, pad=0)
+	ax[i].yaxis.offsetText.set_fontsize(6)
 
-fig.canvas.set_window_title('Nozzle Performance Metrics')
-fig.suptitle('Performance Metrics for Single Plenum Discharge\n'r'({} cm$^3$, $\varnothing${} mm, $\lambda$={})'.format(vol*10**6, d_star*1000, expansion_ratio))
-# fig.legend((line1, line2, line3), ('Inlet Pressure', 'Throat Pressure', 'Exit Pressure'), loc='center', bbox_to_anchor=(0.5, 0.05), ncol=3, frameon=True, fontsize=fontsize, edgecolor='255', borderpad=1)
+	ax[i].tick_params(axis='x', labelsize=6, pad=0)
+
+ax[1].xaxis.label.set_size(8)
+ax[1].set(xlabel=r'Time $(sec)$')
+
 plt.tight_layout()
-plt.subplots_adjust(bottom=0.15)
-plt.subplots_adjust(top=0.8)
-plt.show()
-
-# print('Nozzle Exit Pressure: ', list_of_P_exits[0] / 6894.76)
-
-
-# ---- 1) Plot Inlet Pressures and Exit Velocity
-
-# fig1, ax1 = plt.subplots(figsize=(8, 5), dpi=90)
-
-# ax1.set_xlabel('Time (s)', color='#413839')
-# ax1.set_ylabel('Pressure (psia)', color='#413839')
-# ax1.plot(time, list_of_P_ts, color='#1f77b4', label='Inlet Pressure (psia)')
-# ax1.plot(time, list_of_P_exits, color='#ff7f0e', label='Exit Pressure (psia)')
-# ax1.tick_params(colors='#413839')
-# # ax1.set_ylim(0, 90)
-
-# ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
-
-# ax2.set_ylabel('Velocity (m/s)', color='#413839')  # we already handled the x-label with ax1
-# ax2.plot(time, list_of_v_exits, color='#2ca02c', label='Exit Velocity (m/s)')
-# # ax2.set_ylim(0, 350)
-
-# box = ax1.get_position()
-# ax1.set_position([box.x0, box.y0 + box.height * 0.1, box.width, box.height * 0.9])
-# fig1.legend(['Inlet Pressure (psia)', 'Exit Pressure (psia)', 'Exit Velocity (m/s)'], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False )
-
-# ax1.grid(which='major', axis='both', linestyle='--')
-
-# plt.title('Chamber + Exit Pres. & Exit Velocity for Single Plenum Discharge', y=1.03, color='#413839')
-
-
-
-# ---- 2) Plot Instantaneous Thrust, Average Thrust, Total Impulse, and ISP
-
-# fig2, ax1 = plt.subplots(figsize=(8, 5), dpi=90)
-# ax1.set_xlabel('Time (s)', color='#413839')
-# ax1.set_ylabel('Thrust (mN)', color='#413839')
-# ax1.plot(time, [x*1000 for x in list_of_thrusts], color='#1f77b4', label='Instantaneous Thrust (mN)')
-# ax1.plot(time_offset, [x*1000 for x in average_thrust], color='#1f77b4', label='Cumulative Avg Thrust (mN)', linestyle='--')
-# ax1.tick_params(colors='#413839')
-# # ax1.set_ylim(0, 0.5)
-
-# ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
-
-# ax2.set_ylabel('Total Impulse (mN-s)', color='#413839')  # we already handled the x-label with ax1
-# ax2.plot(time_offset, [x*1000 for x in cumulative_impulse], color='#2ca02c', label='Total Impulse (mN-s)')
-# # ax2.set_ylim(0, 0.1)
-
-# ax3 = ax1.twinx()
-# ax3.set_ylabel('ISP', color='#413839')
-# ax3.plot(time, ISP, color='#ff7f0e', label='ISP')
-# ax3.spines['right'].set_position(('outward', 60))      
-
-# box = ax1.get_position()
-# ax1.set_position([box.x0, box.y0 + box.height * 0.1, box.width*0.88, box.height * 0.9])
-# fig2.legend(['Instantaneous Thrust (mN)', 'Cumulative Avg Thrust (mN)', 'Total Impulse (mN-s)', 'ISP'], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=4, frameon=False )
-
-# ax1.grid(which='major', axis='both', linestyle='--')
-
-# plt.title('Thrust & Total Impulse for Single Plenum Discharge', y=1.03, color='#413839')
-
-
-
-# ---- Plot Mass Flow Rate and Total Mass
-
-# fig3, ax1 = plt.subplots(figsize=(8, 5), dpi=90)
-# ax1.set_xlabel('Time (s)', color='#413839')
-# ax1.set_ylabel('Mass Flow Rate (g/s)', color='#413839')
-# ax1.plot(time, list_of_mdots, color='#1f77b4', label='Mass Flow Rate (g/s)')
-# ax1.tick_params(colors='#413839')
-# # ax1.set_ylim(0, 1.3)
-
-# ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
-
-# ax2.set_ylabel('Propellant Consumed (g)', color='#413839')  # we already handled the x-label with ax1
-# ax2.plot(time_offset, cumulative_mass, color='#2ca02c', label='Propellant Consumed (g)')
-# # ax2.set_ylim(0, 0.3)
-
-# box = ax1.get_position()
-# ax1.set_position([box.x0, box.y0 + box.height * 0.1, box.width, box.height * 0.9])
-# fig3.legend(['Mass Flow Rate (g/s)', 'Propellant Consumed (g)'], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=2, frameon=False )
-
-# ax1.grid(which='major', axis='both', linestyle='--')
-
-# plt.title('Mass Flow Rate & Total Propellant Mass Consumed for Single Plenum Discharge', y=1.03, color='#413839')
-
-
-
-# ---- Plot Critical Pressure, Critical Temperature, and Critical Density
-
-# fig4, ax1 = plt.subplots(figsize=(8.5, 5), dpi=90)
-# ax1.set_xlabel('Time (s)', color='#413839')
-# ax1.set_ylabel('Temperature (K)', color='#413839')
-# ax1.tick_params(colors='#413839')
-# ax1.plot(time, list_of_T_stars, color='#1f77b4', label='Critical Temperature (K)')
-# # ax1.plot(time, list_of_T_exits, color='#1f77b4', label='Exit Temperature (K)')
-
-# ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
-# ax2.set_ylabel('Density (g/mL)', color='#413839')  # we already handled the x-label with ax1
-# ax2.plot(time, [x/1000 for x in list_of_rho_stars], color='#2ca02c', label='Critical Density (g/mL)')
-# # ax2.plot(time, list_of_rho_exits, color='#2ca02c', label='Exit Density (g/mL)')
-
-# ax3 = ax1.twinx()
-# ax3.set_ylabel('Pressure (psi)', color='#413839')
-# ax3.plot(time, list_of_P_stars, color='#ed9926', label='Critical Pressure (psi)')
-# ax3.spines['right'].set_position(('outward', 60))      
-
-# box = ax1.get_position()
-# ax1.set_position([box.x0, box.y0 + box.height * 0.1, box.width*0.9, box.height * 0.9])
-# fig4.legend(['Critical Temperature (K)', 'Critical Density (g/mL)', 'Critical Pressure (psi)'], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False )
-
-# ax1.grid(which='major', axis='both', linestyle='--')
-
-# plt.title('Temperature and Density for Single Plenum Discharge', y=1.03, color='#413839')
-
-
-
-
-
-# figs = {'fig1': fig1, 'fig2': fig2, 'fig3': fig3, 'fig4': fig4}
-
-# ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
-# ax2.set_ylabel('Thrust, mN', color='#413839', fontsize=fontsize)
-# ax2.plot(time, [x*1000 for x in list_of_thrusts], color='#ff7f0e', label='Instantaneous Thrust (mN)', linestyle='--', linewidth=linewidth)
-# # ax2.plot(time_offset, [x*1000 for x in average_thrust], color='#ff7f0e', label='Cumulative Avg Thrust (mN)', linestyle='-.')
-# ax2.tick_params(colors='#413839')
-# ax2.set_ylim(0, 300)
-
-# ax3 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
-# ax3.set_ylabel('Total Impulse, mN-s', color='#413839', fontsize=fontsize)  # we already handled the x-label with ax1
-# ax3.plot(time_offset, [x*1000 for x in cumulative_impulse], color='#2ca02c', label='Total Impulse (N-s)', linestyle=(0, (3, 1, 1, 1, 1, 1)), linewidth=linewidth)
-# ax3.spines['right'].set_position(('outward', 60))
-
-# ax4 = ax1.twinx()
-# ax4.set_ylabel('ISP', color='#413839', fontsize=fontsize)
-# ax4.plot(time, ISP, color='#cc0000', label='ISP', linestyle=(0, (3, 1, 1, 1)), linewidth=linewidth)
-
-# box = ax1.get_position()
-# ax1.set_position([box.x0, box.y0 + box.height * 0.15, box.width * 0.95, box.height * 0.95])
-# fig5.legend(['Inlet Pressure', 'Exit Pressure', 'Instantaneous Thrust', 'Cumulative Avg Thrust', 'Total Impulse'], loc='center', bbox_to_anchor=(0.5, 0.08), ncol=3, frameon=False )
-# fig5.legend(['Inlet Pressure', 'Exit Pressure', 'ISP'], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False, fontsize=fontsize)
-
-# ax1.grid(which='major', axis='both', linestyle='--')
-# plt.title('Single Plenum Discharge\n{0} mm Nozzle, {1} cm^3 Plenum'.format(d_star, vol*(100**3)), y=1.0, color='#413839')
-# fig5.suptitle('Single Plenum Discharge, Pressure and Impulse', fontsize=14, y=0.985)
-# fig5.suptitle('\t{0} mm Nozzle, {1} $cm^3$ Plenum'.format(d_star, vol*(100**3)), fontsize=10)
-# plt.savefig('/mnt/d/OneDrive - UC Davis/HRVIP/Writing/AIAA SciTech 2019 Paper/Images/Sim Results/image.png')
-
-
-
-# Inlet Plot Thrust vs. Pressure
-# fig6, ax1 = plt.subplots(figsize=(8.5, 5), dpi=90)
-# ax1.set_xlabel('Pressure (psia)', color='#413839')
-# ax1.set_ylabel('Thrust (N)', color='#413839')
-# ax1.plot(list_of_P_ts, list_of_thrusts, color='#1f77b4', label='Thrust (N)')
-# ax1.tick_params(colors='#413839')
-
-# ax1.grid(which='major', axis='both', linestyle='--')
-# plt.title('Thrust vs. Inlet Pressure ({} mm)'.format(d_star), y=1.03, color='#413839')
-
-
-
-
-# # Mass Flow Rate vs. Pressure (Isentropic vs. Experimental)
-
-# massflow_data3 = massflow_data_singlescale('Test Data/10222019_test3_singlescale.csv')
-# massflow_data4 = massflow_data('Test Data/10302019_test4.csv')
-# massflow_data5 = massflow_data('Test Data/10312019_test5.csv')
-# massflow_data6 = massflow_data('Test Data/10312019_test6.csv')
-# massflow_data7 = massflow_data('Test Data/11012019_test7.csv')
-
-# massflow_data = [massflow_data3, massflow_data4, massflow_data5, massflow_data6, massflow_data7]
-
-# fig7, ax1 = plt.subplots(figsize=(8.5, 5), dpi=90)
-# 	# Blue: #1f77b4
-# 	# Orange: #ff7f0e
-# 	# Green: #2ca02c
-# ax1.set_xlabel('Pressure (psia)', color='#413839')
-# ax1.set_ylabel('Mass Flow Rate (g/s)', color='#413839')
-# ax1.plot(list_of_P_ts, list_of_mdots, color='#1f77b4', label='isentropi	c')
-
-# for name in massflow_data:
-# 	ax1.errorbar(name["Pressure (psia)"], name["dM/dt nom"], xerr=2, yerr=name["dM/dt err"]/2, color='#2ca02c', label='experimental', linestyle='none', marker='x')
-
-# all_massflow_data = pd.concat(massflow_data, sort=False)
-
-# slope, intercept, r_value, p_value, std_err = stats.linregress(all_massflow_data["Pressure (psia)"], all_massflow_data["dM/dt nom"])
-# ax1.plot(all_massflow_data["Pressure (psia)"], slope*all_massflow_data["Pressure (psia)"]+intercept, color='#2ca02c', linestyle='--', label='_nolegend_')
-
-# ax1.tick_params(colors='#413839')
-# ax1.grid(which='major', axis='both', linestyle='--')
-
-
-# # ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
-
-# # ax2.set_ylabel('Temperature (K)', color='#413839')
-# # ax2.plot(list_of_P_ts, list_of_T_ts, color='#ff7f0e', label='Critical Temperature (K)')
-
-# box = ax1.get_position()
-# ax1.set_position([box.x0, box.y0 + box.height*0.1, box.width, box.height*0.9])
-
-# fig7.legend(['Inviscid', 'Experimental'], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False )
-# plt.title('Mass Flow Rate Comparison ({} mm)'.format(d_star), y=1.03, color='#413839')
-
-# ax1.set_ylim([0, 0.8])
-# # ax2.set_ylim([170, 280])
-
-
-
-# Mass Flow Rate vs. Pressure (Isentropic vs. Experimental)
-
-# massflow_data11 = [massflow_data_test11('Test Data/11132019_test11.csv', 0.12, 104.7)]
-
-# fig7, ax1 = plt.subplots(figsize=(8.5, 5), dpi=90)
-# 	# Blue: #1f77b4
-# 	# Orange: #ff7f0e
-# 	# Green: #2ca02c
-# ax1.set_xlabel('Pressure (psia)', color='#413839')
-# ax1.set_ylabel('Mass Flow Rate (g/s)', color='#413839')
-# ax1.plot(list_of_P_ts, list_of_mdots, color='#1f77b4', label='isentropic')
-
-# for name in massflow_data11:
-# 	ax1.errorbar(name["Pressure (psia)"], name["dM/dt nom"], xerr=2, yerr=name["dM/dt err"]/2, color='#2ca02c', label='experimental', linestyle='none', marker='x')
-
-# all_massflow_data = pd.concat(massflow_data11, sort=False)
-
-# slope, intercept, r_value, p_value, std_err = stats.linregress(all_massflow_data["Pressure (psia)"], all_massflow_data["dM/dt nom"])
-# ax1.plot(all_massflow_data["Pressure (psia)"], slope*all_massflow_data["Pressure (psia)"]+intercept, color='#2ca02c', linestyle='--', label='_nolegend_')
-
-# ax1.tick_params(colors='#413839')
-# ax1.grid(which='major', axis='both', linestyle='--')
-
-
-# # ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
-
-# # ax2.set_ylabel('Temperature (K)', color='#413839')
-# # ax2.plot(list_of_P_ts, list_of_T_ts, color='#ff7f0e', label='Critical Temperature (K)')
-
-# box = ax1.get_position()
-# ax1.set_position([box.x0, box.y0 + box.height*0.1, box.width, box.height*0.9])
-
-# fig7.legend(['Inviscid', 'Experimental'], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False )
-# plt.title('Mass Flow Rate Comparison ({} mm)'.format(d_star), y=1.03, color='#413839')
-
-# ax1.set_ylim([0, 0.8])
-# ax2.set_ylim([170, 280])
-
-
-
-# Thrust vs. Pressure (Isentropic vs. Experimental)
-# test8_trial1 = thrust_data('Test Data/11062019_thrust_test1.csv', 97.56)
-# thrust_data2 = thrust_data('11062019_thrust_test2.csv', 97.61)
-# thrust_data3 = thrust_data('11062019_thrust_test3.csv', 97.51)
-# test8_trial7 = thrust_data('Test Data/11062019_test8_thrust_trial7.csv', 98.18)
-# test8_trial10 = thrust_data('Test Data/11062019_test8_thrust_trial10.csv', 97.71)
-# test8_trial11 = thrust_data('Test Data/11062019_test8_thrust_trial11.csv', 97.62)
-# test8_trial12 = thrust_data('Test Data/11062019_test8_thrust_trial12.csv', 97.66)
-
-# test9_trial1 = thrust_data('Test Data/11072019_test9_thrust_trial1.csv', 144.33)
-# test9_trial5 = thrust_data('Test Data/11072019_test9_thrust_trial5.csv', 144.65)
-# test9_trial9 = thrust_data('Test Data/11072019_test9_thrust_trial9.csv', 145.07)
-
-# data_points = [test8_trial7, test8_trial10, test8_trial11, test9_trial9]
-
-# fig8, ax1 = plt.subplots(figsize=(6.5, 4), dpi=90)
-# 	# Blue: #1f77b4 (Inviscid)
-# 	# Green: #2ca02c
-# 	# Orange: #ff7f0e
-# 	# Gray: #808080
-# ax1.set_xlabel('Pressure (psia)', color='#413839')
-# ax1.set_ylabel('Thrust (mN)', color='#413839')
-# ax1.plot(list_of_P_ts, [x*1000 for x in list_of_thrusts], color='#1f77b4', label='isentropic')
-
-# for name in data_points:
-# 	ax1.plot(name["Pressure (psia)"], name["Thrust (mN)"], color='#2ca02c', label='trial1', linestyle='none', marker='x')
-
-# all_thrust_data = pd.concat(data_points)
-
-# slope, intercept, r_value, p_value, std_err = stats.linregress(all_thrust_data["Pressure (psia)"], all_thrust_data["Thrust (mN)"])
-# ax1.plot(all_thrust_data["Pressure (psia)"], slope*all_thrust_data["Pressure (psia)"]+intercept, color='#2ca02c', linestyle='--', label='_nolegend_')
-
-# ax1.tick_params(colors='#413839')
-# ax1.grid(which='major', axis='both', linestyle='--')
-
-# box = ax1.get_position()
-# ax1.set_position([box.x0, box.y0 + box.height*0.1, box.width, box.height*0.9])
-
-# fig8.legend(['Inviscid', 'Experimental'], loc='center', bbox_to_anchor=(0.5, 0.03), ncol=3, frameon=False )
-# plt.title('Thrust Comparison ({} mm)'.format(d_star), y=1.03, color='#413839')
-
-
-
-
-# Single Plenum Discharge
-# plenum_trial13 = thrust_data('Test Data/11072019_test9_thrust_trial13.csv', 145.19)
-# plenum_trial14 = thrust_data('Test Data/11072019_test9_thrust_trial14.csv', 145.07)
-
-# data_points = [plenum_trial13, plenum_trial14]
-# colors = ['#2ca02c', '#ff7f0e']
-# labels = ['Trial 1', 'Trial 2']
-
-# fig9, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(6.5, 6), dpi=90)
-# ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
-
-# data_prop_psi = pd.read_csv('Test Data/20191130_131515_prop_data.csv', header=1)
-# data_prop_psi.insert(2, "Prop Pressure (psia)", [x+14.7 for x in data_prop_psi["Prop Pressure (psig)"]])
-
-# data_float_psi = pd.read_csv('Test Data/20191130_131515_float_data.csv', header=1)
-# data_float_psi.insert(2, "Float Pressure (psia)", [x+14.7 for x in data_float_psi["Float Pressure (psig)"]])
-
-# data_weight = pd.read_csv('Test Data/20191130_131515_loadcell_data.csv', header=1)
-# data_weight.insert(2, "Thrust (mN)", [x*9.81 for x in data_weight["Weight (?)"]])
-
-# ax1.plot(data_prop_psi['Time (s)'], data_prop_psi['Prop Pressure (psia)'], 
-# 	color='#1f77b4', 
-# 	label='Upstream Pres.', 
-# 	marker='o', 
-# 	markersize='5', 
-# 	fillstyle='none', 
-# 	linestyle='none', 
-# 	linewidth='1')
-# ax1.plot(data_float_psi['Time (s)'], data_float_psi['Float Pressure (psia)'], 
-# 	color='#1f77b4', 
-# 	label='Downstream Pres.', 
-# 	marker='o', 
-# 	markersize='5', 
-# 	fillstyle='none', 
-# 	linestyle='none', 
-# 	linewidth='1')
-
-
-# ax2.plot(data_weight['Time (s)'], data_weight['Thrust (mN)'], 
-# 	color='#ff7f0e', 
-# 	label='Measured Thrust', 
-# 	marker='o',
-# 	markersize='5',
-# 	fillstyle='none', 
-# 	linestyle='none', 
-# 	linewidth='1')
-
-
-# ax1.plot([x+0.663 for x in time], list_of_P_ts,
-# 	color='#1f77b4',
-# 	linestyle='-', 
-# 	label='Inviscid Pressure')
-
-# ax2.plot([x+0.663 for x in time], [i*1000 for i in list_of_thrusts], 
-# 	color='#ff7f0e', 
-# 	linestyle='-', 
-# 	label='Inviscid Thrust')
-
-
-
-# for i, data in enumerate(data_points):
-# 	ax1.errorbar(data["Timestamp (ms)"], data["Thrust (mN)"], xerr=0.0625, yerr=18.2466/2, color=colors[i], label=labels[i], linestyle='none', marker='x')
-
-
-# all_plenum_data = pd.concat(data_points)
-
-# slope, intercept, r_value, p_value, std_err = stats.linregress(all_data["Pressure (psia)"], all_data["Thrust (mN)"])
-# ax1.plot(all_data["Pressure (psia)"], slope*all_data["Pressure (psia)"]+intercept, color='#2ca02c', linestyle='--', label='_nolegend_')
-
-# Blue: #1f77b4 (Inviscid)
-# Green: #2ca02c
-# Orange: #ff7f0e
-# Gray: #808080
-# ax2.set_xlabel('Time (s)', color='#413839')
-# ax1.set_ylabel('Pressure (psia)', color='#413839')
-# ax2.set_ylabel('Thrust (mN)', color='#413839')
-
-# ax1.set_xlim([0.5, 2.5])
-
-
-# ax1.tick_params(colors='#413839')
-# ax2.tick_params(colors='#413839')
-# ax1.grid(which='major', axis='both', linestyle='--')
-# ax2.grid(which='major', axis='both', linestyle='--')
-
-# box1 = ax1.get_position()
-# box2 = ax2.get_position()
-# ax1.set_position([box1.x0, box1.y0 + box1.height*0.1, box1.width, box1.height*0.9])
-# ax2.set_position([box2.x0, box2.y0 + box2.height*0.2, box2.width, box2.height*0.9])
-
-# legend_elements = [Line2D([0], [0], marker='o', color='k', label='Experimental', markersize=5, fillstyle='none', linestyle='none'),
-# 				   Line2D([0], [0], linestyle='-', color='k', label='Inviscid')]
-
-# fig9.legend(handles=legend_elements, loc='center', bbox_to_anchor=(0.5, 0.06), ncol=3, frameon=False)
-# fig9.legend(['Experimental', 'Inviscid'], loc='center', bbox_to_anchor=(0.5, 0.08), ncol=2, frameon=False)
-
-# ax1.set_title('Experimental vs. Inviscid Pressure & Thrust \n({0} $mm$ Nozzle, {1} $cm^3$ Plenum)'.format(d_star, vol*10**6), y=1.06, color='#413839')
-#ax1.set_title('Pressure')
-#ax2.set_title('Thrust')
-
-
-
-# ---- Plot Everything
+plt.subplots_adjust(top=0.89)
 # plt.show()
+
+
+
+# --------------------------------------------------------------------------------
+# Only looking at temperatures on same graph
+for gas in gas_types:
+	fig, ax = plt.subplots(1,1, figsize=(6,3), dpi=300)
+	fig.suptitle('Valve Upstream and Downstream Flow Total Temperatures', y=0.98)
+	ax.set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(all_parameters.loc[gas]['Propellant'], round(all_parameters.loc[gas]['T_t_init'], 2), all_parameters.loc[gas]['vol']*10**6, all_parameters.loc[gas]['d_star']*1000, all_parameters.loc[gas]['expansion_ratio']), fontsize=7)
+
+	temp_styles=['-', '--']
+	temp_labels=['Upstream flow', 'Downstream flow']
+	for i, key in enumerate(['T_t', 'T_t_in']):
+		ax.plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas][key], label=temp_labels[i], linestyle=temp_styles[i])
+	
+	ax.set_ylabel(r'Temperature, $K$', color='#413839', fontsize=fontsize)
+	ax.set_xlim(left=0)
+	ax.legend()
+
+	# yfmt = ScalarFormatterForceFormat()
+	# yfmt.set_powerlimits((0,0))
+	# ax.yaxis.set_major_formatter(yfmt)
+	# ax.ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
+	ax.tick_params(axis='y', labelsize=6, pad=0)
+	ax.yaxis.offsetText.set_fontsize(6)
+
+	ax.tick_params(axis='x', labelsize=6, pad=0)
+	ax.xaxis.label.set_size(8)
+	ax.set(xlabel=r'Time $(sec)$')
+
+	plt.tight_layout()
+	plt.subplots_adjust(top=0.85)
+# plt.show()
+
+
+
+# --------------------------------------------------------------------------------
+# Let's see if we can plot exit pres & sat pres at exit on same plot, and also temp on another
+for gas in gas_types:
+	fig_sat, axs = plt.subplots(4,1, figsize=figsize, dpi=dpi, sharex=True)
+	fig_sat.suptitle('{} and {}'.format(figname[list(data.keys())[0]], figname[list(data.keys())[1]]), y=0.98)
+	axs[0].set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(all_parameters.loc[gas]['Propellant'], round(all_parameters.loc[gas]['T_t_init'], 2), all_parameters.loc[gas]['vol']*10**6, all_parameters.loc[gas]['d_star']*1000, all_parameters.loc[gas]['expansion_ratio']), fontsize=7)
+	fig_sat.canvas.set_window_title('Saturated Pressure Stuff')
+
+	for i, key in enumerate(data):
+		sns.lineplot(ax=axs[i], x='time', y=key, palette='colorblind', data=all_data[all_data['gas_type']==gas], hue='flow regimes', legend='full')
+
+		# if key=='P_t':
+		# 	# sns.lineplot(ax=axs[i], x=times['P_fg_t'], y=all_data['P_fg_t'], palette='colorblind', data=all_data[all_data['gas_type']==gas], legend='full')
+		# 	axs[i].plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas]['P_fg_t'], color='red', label='Phase Change Pres at Plenum Temp')
+		# 	# axs[i].plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas]['P_trip'], color='green', linestyle='--', label='Triple Point')
+		# if key=='T_t':
+		# 	# sns.lineplot(ax=axs[i], x=times['T_fg_t'], y=all_data['T_fg_t'], palette='colorblind', data=all_data[all_data['gas_type']==gas], legend='full')
+		# 	axs[i].plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas]['T_fg_t'], color='red', label='Phase Change Temp at Plenum Pres')
+		# 	# axs[i].plot(all_data[all_data['gas_type']==gas]['time'], all_data[all_data['gas_type']==gas]['T_trip'], color='green', linestyle='--', label='Triple Point')
+
+		# if key=='P_t':
+		# 	axs[i].plot(all_data[all_data['gas_type']==gas]['time'], [fg_pres_from_temp(x) for x in all_data[all_data['gas_type']==gas]['T_t'].values], color='red', label='Phase Change Pres at Exit Temp')
+
+		# if key=='T_t':
+		# 	axs[i].plot(all_data[all_data['gas_type']==gas]['time'], [fg_temp_from_pres(x) for x in all_data[all_data['gas_type']==gas]['P_t'].values], color='red', label='Phase Change Temp at Exit Pres')
+			
+
+		axs[i].set_ylabel(ylabels[key], color='#413839', fontsize=fontsize)
+		axs[i].set_xlim(left=0)
+		# axs[i].legend(loc=legend_locs[key], fontsize=6, framealpha=0.9)
+		axs[i].legend().texts[0].set_text('Flow Regimes')
+
+		yfmt = ScalarFormatterForceFormat()
+		yfmt.set_powerlimits((0,0))
+		axs[i].yaxis.set_major_formatter(yfmt)
+		axs[i].ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
+		axs[i].tick_params(axis='y', labelsize=6, pad=0)
+		axs[i].yaxis.offsetText.set_fontsize(6)
+
+		axs[i].tick_params(axis='x', labelsize=6, pad=0)
+		axs[i].xaxis.label.set_size(8)
+		axs[i].set(xlabel=r'Time $(sec)$')
+
+	plt.tight_layout()
+	plt.subplots_adjust(top=0.885)
+	# axs[0].set_ylim([-0.01, 2.6])
+	# axs[1].set_ylim(bottom=-0.01)
+	# plt.show()
+
+
+
+
+# --------------------------------------------------------------------------------
+# Compare the two gas types together on one plot and examine the flow regimes
+fig, axs = plt.subplots(1,1, figsize=(6,3), dpi=300, sharex=True)
+fig.canvas.set_window_title('Nozzle Performance Metrics')
+fig.suptitle('Throat Reynolds No. for Single Plenum Discharge', y=1)
+axs.set_title('In-space vs. On-ground')
+
+key, value = list(data.items())[0]
+sns.lineplot(ax=axs, x=times[key], y=data[key], palette='colorblind', data=all_data, style='Propellant', legend='full')
+
+axs.set_ylabel(ylabels[key], color='#413839', fontsize=fontsize)
+
+axs.set(xscale="log")
+axs.set_xlim(left=0.1)
+
+# axs.set(yscale="log")
+# axs.set_ylim(bottom=0.1)
+
+# if key == 'visc_losses':
+# 	axs.set_ylim(top=105)
+# if key == 'Re_star':
+	# axs.set(yscale="log")
+	# axs.set_ylim(bottom=100)
+
+
+axs.legend(loc='lower right', fontsize=6, framealpha=0.9)
+
+
+axs.yaxis.set_major_formatter(yfmt)
+axs.ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
+axs.tick_params(axis='y', labelsize=6, pad=0)
+axs.yaxis.offsetText.set_fontsize(6)
+
+axs.tick_params(axis='x', labelsize=6, pad=0)
+axs.xaxis.label.set_size(8)
+axs.set(xlabel=r'Time $(sec)$')
+
+# plt.show()
+
+
+
+
+# --------------------------------------------------------------------------------
+# Plot properties along nozzle length
+fig_noz, axs = plt.subplots(2,2, figsize=(8, 4.5), dpi=dpi, sharex=True)
+fig_noz.suptitle('Flow Properties over Nozzle Length', y=0.98)
+fig_noz.canvas.set_window_title('Flow Properties over Nozzle Length')
+# axs[0, 0].set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(gas_label, T_t_init, vol*10**6, d_star*1000, expansion_ratio), fontsize=9)
+
+# Iterate across length of nozzle to get spacial distribution of properties
+# Init 2D arrays
+mach_no_2D = []
+P_2D = []
+T_2D = []
+sound = []
+flow_regimes = []
+
+time_idxs = len(time)
+time_idxs_to_plot = [0, 780, 860]
+
+for i, idx in enumerate(time_idxs_to_plot):
+	mach_no_2D.append(list(np.zeros(len(geometry_length))))
+	P_2D.append(list(np.zeros(len(geometry_length))))
+	T_2D.append(list(np.zeros(len(geometry_length))))
+	sound.append(list(np.zeros(len(geometry_length))))
+
+	if list_of_flow_regimes[idx] == 'Underexpanded':
+		print('underexpanded')
+		for j, x in enumerate(geometry_length):
+			if x <= (length_inlet + length_conv):																							# Subsonic up to beginning of throat
+				mach_no_2D[i][j] = subsonic_mach_anywhere(geometry_ARs[j])[()]
+			elif x > (length_inlet + length_conv) and x <= (length_inlet + length_conv + length_throat):									# Sonic at and through the throat
+				mach_no_2D[i][j] = 1
+			elif x > (length_inlet + length_conv + length_throat):																			# Supersonic in diverging section
+				mach_no_2D[i][j] = supersonic_mach_anywhere(geometry_ARs[j])[()]
+			P_2D[i][j], T_2D[i][j], sound[i][j] = stream_props(mach_no_2D[i][j], P_t_inlet[idx], T_t_inlet[idx])
+
+	if list_of_flow_regimes[idx] == 'Normal Shock':
+		print('weak shock outside')
+		for j, x in enumerate(geometry_length):
+			if x <= (length_inlet + length_conv):																							# Subsonic up to beginning of throat
+				mach_no_2D[i][j] = subsonic_mach_anywhere(geometry_ARs[j])[()]
+			elif x > (length_inlet + length_conv) and x <= (length_inlet + length_conv + length_throat):									# Sonic at and through the throat
+				mach_no_2D[i][j] = 1
+			elif x > (length_inlet + length_conv + length_throat):																			# Supersonic in diverging section
+				mach_no_2D[i][j] = supersonic_mach_anywhere(geometry_ARs[j])[()]
+			P_2D[i][j], T_2D[i][j], sound[i][j] = stream_props(mach_no_2D[i][j], P_t_inlet[idx], T_t_inlet[idx])
+
+	if list_of_flow_regimes[idx] == 'Normal Shock in Nozzle':
+		print('normal shock in nozzle')
+		shock_pos = length_inlet + length_conv + length_throat + (d_star*np.sqrt(list_of_area_ratios_at_shock[idx]) - d_star) / (2*np.tan(np.radians(half_angle)))		# Position of shock relative to beginning of whole nozzle
+		shock_pos_diff = [abs(x-shock_pos) for x in geometry_length]																		# Differential between discrete nozzle locations and calculated location of shock
+		shock_pos_discrete_idx = shock_pos_diff.index(min(shock_pos_diff))																	# Index of mininmum, i.e. index corresponding to discrete shock location nearest to the calculated shock location
+		for j, x in enumerate(geometry_length):
+			if x <= (length_inlet + length_conv):																							# Subsonic up to beginning of throat
+				mach_no_2D[i][j] = subsonic_mach_anywhere(geometry_ARs[j])[()]
+			elif x > (length_inlet + length_conv) and x <= (length_inlet + length_conv + length_throat):									# Sonic at and through the throat
+				mach_no_2D[i][j] = 1
+			elif x > (length_inlet + length_conv + length_throat) and x < geometry_length[shock_pos_discrete_idx]:							# Supersonic in diverging section up to shock
+				mach_no_2D[i][j] = supersonic_mach_anywhere(geometry_ARs[j])[()]
+			elif x >= geometry_length[shock_pos_discrete_idx]:																				# Subsonic in diverging section after shock
+				mach_no_2D[i][j] = subsonic_mach_anywhere(geometry_ARs[j]/list_of_crit_area_ratios[idx])[()]
+			P_2D[i][j], T_2D[i][j], sound[i][j] = stream_props(mach_no_2D[i][j], P_t_inlet[idx], T_t_inlet[idx])
+
+	if list_of_flow_regimes[idx] == 'Subsonic':
+		print('subsonic')
+		area = []
+		machs = list(np.linspace(0, 1, 100))
+		for mach in machs:
+			area.append((list_of_mdots[idx]/1000) / ( (P_t_inlet[idx]/np.sqrt(T_t_inlet[idx])) * np.sqrt(k/R) * mach * (1 + L*(mach**2))**(-Q/2) ))
+		subsonic_mach_from_area = interp1d(area, machs)
+		for j, x in enumerate(geometry_length):
+			area = geometry_ARs[j]*A_star
+			mach_no_2D[i][j] = subsonic_mach_from_area(area)
+			P_2D[i][j], T_2D[i][j], sound[i][j] = stream_props(mach_no_2D[i][j], P_t_inlet[idx], T_t_inlet[idx])
+
+i = 0
+axs[0, 0].plot([x*1000 for x in geometry_length], [y*1000 for y in geometry_rads], color='green')
+axs[0, 0].plot([x*1000 for x in geometry_length], [-y*1000 for y in geometry_rads], color='green')
+for Ma, c, P, T in zip(mach_no_2D, sound, P_2D, T_2D):
+	label = r'{} sec ({})'.format(round(time[time_idxs_to_plot[i]],2), list_of_flow_regimes[time_idxs_to_plot[i]])
+	axs[1, 0].plot([x*1000 for x in geometry_length], Ma, label=label)
+	# axs[1, 0].plot([x*1000 for x in geometry_length], np.multiply(Ma, c), label=label)
+	axs[0, 1].plot([x*1000 for x in geometry_length], [x/1000 for x in P], label=label)
+	axs[1, 1].plot([x*1000 for x in geometry_length], T, label=label)
+	i += 1
+
+axs[0, 0].set_ylabel(r'Nozzle Radius, $mm$', color='#413839', fontsize=fontsize)
+axs[1, 0].set_ylabel('Mach No.', color='#413839', fontsize=fontsize)
+# axs[1, 0].set_ylabel(r'Velocity, $m/s$', color='#413839', fontsize=fontsize)
+axs[0, 1].set_ylabel(r'Pressure, $kPa$', color='#413839', fontsize=fontsize)
+axs[1, 1].set_ylabel(r'Temperature, $K$', color='#413839', fontsize=fontsize)
+
+# axs[0, 0].legend(loc='upper left', fontsize=6, framealpha=0.9)
+axs[1, 0].legend(loc='upper left', fontsize=6, framealpha=0.9)
+axs[0, 1].legend(loc='upper left', fontsize=6, framealpha=0.9)
+axs[1, 1].legend(loc='upper left', fontsize=6, framealpha=0.9)
+
+yfmt = ScalarFormatterForceFormat()
+yfmt.set_powerlimits((0,0))
+
+axs[0, 0].yaxis.set_major_formatter(yfmt)
+axs[1, 0].yaxis.set_major_formatter(yfmt)
+axs[0, 1].yaxis.set_major_formatter(yfmt)
+axs[1, 1].yaxis.set_major_formatter(yfmt)
+
+axs[0, 0].ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
+axs[1, 0].ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
+axs[0, 1].ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
+axs[1, 1].ticklabel_format(axis='y', style='sci', scilimits=(0,0), useMathText=True)
+
+axs[0, 0].tick_params(axis='y', labelsize=6, pad=0)
+axs[1, 0].tick_params(axis='y', labelsize=6, pad=0)
+axs[0, 1].tick_params(axis='y', labelsize=6, pad=0)
+axs[1, 1].tick_params(axis='y', labelsize=6, pad=0)
+
+axs[0, 0].yaxis.offsetText.set_fontsize(6)
+axs[1, 0].yaxis.offsetText.set_fontsize(6)
+axs[0, 1].yaxis.offsetText.set_fontsize(6)
+axs[1, 1].yaxis.offsetText.set_fontsize(6)
+
+axs[0, 0].tick_params(axis='x', labelsize=6, pad=0)
+axs[1, 0].tick_params(axis='x', labelsize=6, pad=0)
+axs[0, 1].tick_params(axis='x', labelsize=6, pad=0)
+axs[1, 1].tick_params(axis='x', labelsize=6, pad=0)
+
+axs[0, 0].xaxis.label.set_size(8)
+axs[1, 0].xaxis.label.set_size(8)
+axs[0, 1].xaxis.label.set_size(8)
+axs[1, 1].xaxis.label.set_size(8)
+
+axs[1, 0].set(xlabel=r'Nozzle Length, $mm$')
+axs[1, 1].set(xlabel=r'Nozzle Length, $mm$')
+
+axs[0, 0].set_ylim(bottom=-0.55, top=0.55)
+
+# plt.show()
+
+
+
+

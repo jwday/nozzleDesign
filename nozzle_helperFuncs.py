@@ -1,3 +1,6 @@
+# nozzle_helperFuncs.py
+# Helper functions to interpolate/extrapolate real gas data from NIST. Used only when not using isentropic model in simulation, or when heat transfer is being estimated.
+
 from scipy import stats
 import pandas as pd
 import numpy as np

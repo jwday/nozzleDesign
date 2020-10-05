@@ -1,4 +1,5 @@
-# Steady-state Isentropic Nozzle Flow: Pressure sweep for constant temperature
+# plot_ss_pres_and_mdot.py
+# Use simplied nozzle code (nozzle_code_2)
 
 from nozzle_code_2 import nozzle
 import matplotlib.pyplot as plt
@@ -21,6 +22,39 @@ gas_type = 'CO2'				# Gas Choices: R236fa, R134a, N2, CO2, H2, air
 
 
 
+k = 1.289						# Specific heat ratio (NOT thermal conductivity)
+R = 8.314/0.04401  				# Specific gas constant (J/kg-K)
+
+
+## ==================================================================================
+## ---- MACH-AREA RELATION ----------------------------------------------------------
+## ==================================================================================
+
+# Nozzle Geometry
+A_star = np.pi*(d_star**2)/4  					# Throat area
+A_exit = A_star*expansion_ratio  				# Exit area
+d_exit = np.sqrt(4*A_exit/np.pi)  				# Exit diameter (m)
+
+# Common isentropic nozzle relationships rewritten in compact terms
+P = (k+1)/2
+L = (k-1)/2
+W = k/(k-1)
+Q = P/L  # aka (k+1)/(k-1)
+S = (A_exit/A_star)**2
+Y = np.sqrt(k/R)
+
+def machAreaRelation(X, S):
+	f = (1 + L*X)**Q - S*X*(P**Q)  # Where 'X' is M^2 and S is AREA RATIO SQUARED (so that this same function can be used for different area ratios i.e. along the length of the nozzle)
+	return f
+
+x0 = np.array([0.00001, 20])	# List of M^2 to solve for roots over
+sol0 = opti.fsolve(machAreaRelation, x0, args=S, maxfev=100000, full_output=False, xtol=0.000000001)	# Solve for M^2 given S as an extra argument
+
+M_crit_sub = np.sqrt(sol0[0])  # Subsonic critical mach no.
+M_crit_sup = np.sqrt(sol0[1])  # Supersonic critical mach no.
+
+
+
 
 ## ==================================================================================
 ## ---- INIT DATA LISTS -------------------------------------------------------------
@@ -38,7 +72,8 @@ list_of_thrusts = []
 ## ==================================================================================
 
 for P_t in list_of_P_ts:
-    m_dot, M_crit_sub, M_crit_sup, PR_crit_sub, PR_crit_sup, PR_exit_shock, M_exit_behindshock, M_exit, P_exit, v_exit, F, P_star, T_star, rho_star, Re_star, T_exit, rho_exit = nozzle(P_t, list_of_T_ts[-1], P_amb, d_star, expansion_ratio, half_angle, gas_type)
+    # m_dot, M_crit_sub, M_crit_sup, PR_crit_sub, PR_crit_sup, PR_exit_shock, M_exit_behindshock, M_exit, P_exit, v_exit, F, P_star, T_star, rho_star, Re_star, T_exit, rho_exit = nozzle(P_t, list_of_T_ts[-1], P_amb, d_star, expansion_ratio, half_angle, gas_type)
+	P_star, T_star, rho_star, Re_star, M_star, v_star, P_exit, T_exit, rho_exit, M_exit, v_exit, c_exit, m_dot, F, CF, flow_regime, area_ratio_at_shock, F_mdotv, F_pdiff = nozzle(k, R, M_crit_sub, M_crit_sup, P_t, T_t_inlet[-1], rho_t_inlet[-1], P_amb, d_star, expansion_ratio, half_angle, gas_type, visc_func, r_from_PT_gas_func)
     
     list_of_mdots.append(m_dot*1000)
     list_of_thrusts.append(F)

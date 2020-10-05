@@ -1,3 +1,6 @@
+# data_handling_funcs.py
+# Helper functions used to parse test data. Only required when comparing ideal to experimental results.
+
 from scipy import stats
 from scipy import signal
 import math

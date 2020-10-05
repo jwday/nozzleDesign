@@ -1,3 +1,7 @@
+# plot_pres_and_thrust_5x.py
+# Plots steady-state pressure and mass flow rate test results for 5x set points (3 trials per setpoint)
+# Mass flow rate is compared to isentropic model as calculated with the simplified nozzle code (nozzle_code_2)
+
 from nozzle_code_2 import nozzle
 import matplotlib as mpl
 import matplotlib.pyplot as plt
