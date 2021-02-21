@@ -1,6 +1,24 @@
 # nozzleDesign
 Simulates 1D gas flow through a converging-diverging (C-D) nozzle for CO2 and R134a, using a fixed-volume plenum chamber as the propellant source, with starting pressures at 100 and 87 psig, respectively. Simulation can be performed either using isentropic relations or using interpolated/extrapolated NIST data. Simulation outputs .csv file with simulation results. Plots are generated in separate files.
 
+Many output options are available based on what properties the user wishes to view. Selection is done in-code by simply commenting out the undesired properties. The user may select from the following list:
+
+- Plenum Total Pressure, Total Temperature, Total Density, Total Specific Volume, Specific Enthalpy, Specific Internal Energy, Vapor Quality
+- Reynolds No., Nusselt No., Prandtl No., Viscosity Upstream of Valve
+- Valve Wall Temperature
+- Nozzle Inlet Total Pressure, Total Temperature, Static Temperature, Mach No.
+- Nozzle Throat Flow Pressure, Temperature, Density, Reynold's No., Mach No., Velocity
+- Mass Flow Rate
+- Thrust contributions from mass flow rate (momentum) and pressure differential
+- Instantaneous Thrust, Ideal Thrust Coefficient, Viscous Loss Percentage, Effective Thrust Coefficient, Effective Thrust, Time Average Thrust
+- Net Impulse, Net Effective Impulse, Specific Impulse
+- Area Ratio at Shock Location
+- Saturated Vapor Pressure at Current Temperature
+- Saturated Vapor Temperature at Current Pressure
+- Saturated Vapor Pressure at Exit
+- Saturated Vapor Temperature at Exit
+
+
 ## Running this code
 Ideally, a user should be able to run nozzle_master.py directly from your favorite editor with Python extension (such as VSCode). Currently support has not been added for command line execution. Currently only CO2 and R134a are supported. The following libraries are required:
 
