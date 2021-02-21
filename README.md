@@ -3,6 +3,25 @@ Simulates 1D gas flow through a converging-diverging (C-D) nozzle for CO2 and R1
 
 Simulation can be performed either using isentropic relations or using interpolated/extrapolated NIST data. Simulation outputs .csv file with simulation results. Plots are generated in separate files.
 
-More readme info on the way. Rudamentary instructions contained within headers of .py files.
+Run nozzle_master.py directly from your favorite editor with Python extension (such as VSCode). Currently support has not been added for command line execution. Currently only CO2 and R134a are supported.
 
-Run nozzle_master.py from your favorite editor with Python extension (such as VSCode)
+After integrating over time to estimate the various properties (pressure, temperature, thrust, etc.), the script will generate a number of plots:
+
+1. Time-rate of change of Pressure (P) vs. temperature (T), and density (rho) vs. internal energy (u) plotted against real gas data to identify the point where phase change (condensation) begins within the plenum due to the rapidly decreasing pressure.
+2. Throat Reynold's Number (based on pipe flow), used to identify the point of transition from turbulent to laminar flow (~< 4E3)
+3. Upstream and Downstream flow temperatures as it enters and exits the valve. These results indicate that there is very little heat transfered from the valve to the flow.
+4. Plenum pressure, thrust (both instantaneous and time-averaged), and net impulse vs. time for a given gas
+5. Time-logarithmic comparison of in-space vs. on-ground properties as specified by whichever properties are uncommented in the 'data' dictionary object (line 1009).
+6. Flow properties over the length of the specified nozzle geometry taken at three points in time
+
+### Ex. Performance vs. Time
+Nozzle performance is illustrated by showing the time-rate of change of plenum pressure, corresponding thrust (both instantaneous and time-average), and the net impulse generated over the duration of the discharge.
+<img src="https://github.com/jwday/Thesis/blob/master/figures/simresults/Sim_Thrust_and_Impulse_CO2.png" alt="Sim CO2 P and Thr" height="400">
+
+### Ex. Thrust Coefficient vs. Time
+One of the many parameters which can be viewed is the Thrust Coefficient, including viscous losses as modeled based on the work by [Spisz et. al from NASA Lewis (Glenn) Research Center](https://ntrs.nasa.gov/api/citations/19650027295/downloads/19650027295.pdf).
+<img src="https://github.com/jwday/Thesis/blob/master/figures/simresults/Thrust_Coeff_and_Visc_Losses_CO2.png" alt="Sim CO2 Cf vs Time" height="400">
+
+#### Ex. Density vs. Internal Energy (rho-u) Plot
+The change in density and internal energy was used to determine the phase and estimate the plenum gas quality (X) as it transitioned into the two-phase region. Of course it was later found that despite a phase change potentially taking place, the quality remained very high (>99%) for the duration of the discharge, indicating that the isentropic assumptions which were originally used to model the gas would still remain valid and continue to provide a good estimate.
+<img src="https://github.com/jwday/Thesis/blob/master/figures/simresults/rho-u_CO2_Phase-Region-Plot.png" alt="Sim CO2 Phase Change" height="400">
