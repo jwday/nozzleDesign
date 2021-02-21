@@ -30,7 +30,7 @@ from nozzle_helperFuncs import *
 ## ---- SIMULATION OPTIONS ----------------------------------------------------------
 ## ==================================================================================
 
-gas_types = ['CO2', 'R134a']	# Gasses to cycle through (currently only CO2 and R134a are available, based on the gas data programmed below)
+gas_types = ['CO2']	# Gasses to cycle through (currently only CO2 and R134a are available, based on the gas data programmed below)
 d_upstream = 2 / 1000			# Upstream "pipe" diameter (really just the valve orifice diameter), units of m (mm / 1000)
 T_wall_init = 293				# Valve brass body wall tempertaure used to evaluate heat transfer conductivity
 half_angle_conv = 110/2			# Half-angle of converging section
@@ -48,7 +48,7 @@ thermal_model = False
 ## ---- PLOTTING OPTIONS ------------------------------------------------------------
 ## ==================================================================================
 figsize = (6, 4)				# Figure size (in)
-dpi = 300						# Figure dpi
+dpi = 150						# Figure dpi
 
 # --------------------------------------------------------------------------------
 # Define a plot formatter and standardize plot formatting schemes
@@ -990,7 +990,7 @@ for gas_type in gas_types:
 			bbox={'facecolor': 'red', 'alpha': 0.2, 'pad': 7})
 
 	plt.tight_layout()
-	# plt.show()
+	plt.show()
 
 
 
@@ -1294,7 +1294,7 @@ titles = {
 
 # --------------------------------------------------------------------------------
 # Let's plot Re of both gasses on one figure with two subplots of differing time scales and make sure you include ax.set_titles
-fig, ax = plt.subplots(2,1, figsize=(6, 4.5), dpi=300)
+fig, ax = plt.subplots(2,1, figsize=(6, 4.5), dpi=dpi)
 fig.suptitle(r'Throat Reynolds Number for CO$_2$ and R134a', y=0.98)
 for i, gas in enumerate(gas_types):
 	ax[i].set_title(r'{} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={}'.format(all_parameters.loc[gas]['Propellant'], round(all_parameters.loc[gas]['T_t_init'], 2), all_parameters.loc[gas]['vol']*10**6, all_parameters.loc[gas]['d_star']*1000, all_parameters.loc[gas]['expansion_ratio']), fontsize=7)
@@ -1316,15 +1316,15 @@ ax[1].set(xlabel=r'Time $(sec)$')
 
 plt.tight_layout()
 plt.subplots_adjust(top=0.89)
-# plt.show()
+plt.show()
 
 
 
 # --------------------------------------------------------------------------------
 # Only looking at temperatures on same graph
 for gas in gas_types:
-	fig, ax = plt.subplots(1,1, figsize=(6,3), dpi=300)
-	fig.suptitle('Valve Upstream and Downstream Flow Total Temperatures', y=0.98)
+	fig, ax = plt.subplots(1,1, figsize=(6,3), dpi=dpi)
+	fig.suptitle('Upstream and Downstream (from Valve) Total Temperatures', y=0.98)
 	ax.set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(all_parameters.loc[gas]['Propellant'], round(all_parameters.loc[gas]['T_t_init'], 2), all_parameters.loc[gas]['vol']*10**6, all_parameters.loc[gas]['d_star']*1000, all_parameters.loc[gas]['expansion_ratio']), fontsize=7)
 
 	temp_styles=['-', '--']
@@ -1349,17 +1349,18 @@ for gas in gas_types:
 
 	plt.tight_layout()
 	plt.subplots_adjust(top=0.85)
-# plt.show()
+plt.show()
 
 
 
 # --------------------------------------------------------------------------------
 # Let's see if we can plot exit pres & sat pres at exit on same plot, and also temp on another
 for gas in gas_types:
-	fig_sat, axs = plt.subplots(4,1, figsize=figsize, dpi=dpi, sharex=True)
+	var_figsize = (figsize[0], figsize[1]*len(data)/2)
+	fig_sat, axs = plt.subplots(4,1, figsize=var_figsize, dpi=dpi, sharex=True)
 	fig_sat.suptitle('{} and {}'.format(figname[list(data.keys())[0]], figname[list(data.keys())[1]]), y=0.98)
 	axs[0].set_title(r'({} at $T_0$={} K, $V_{{p}}=${} cm$^3$, Nozzle $\varnothing${} mm, $\lambda$={})'.format(all_parameters.loc[gas]['Propellant'], round(all_parameters.loc[gas]['T_t_init'], 2), all_parameters.loc[gas]['vol']*10**6, all_parameters.loc[gas]['d_star']*1000, all_parameters.loc[gas]['expansion_ratio']), fontsize=7)
-	fig_sat.canvas.set_window_title('Saturated Pressure Stuff')
+	fig_sat.canvas.set_window_title('Selected Properties vs. Time')
 
 	for i, key in enumerate(data):
 		sns.lineplot(ax=axs[i], x='time', y=key, palette='colorblind', data=all_data[all_data['gas_type']==gas], hue='flow regimes', legend='full')
@@ -1397,19 +1398,19 @@ for gas in gas_types:
 		axs[i].set(xlabel=r'Time $(sec)$')
 
 	plt.tight_layout()
-	plt.subplots_adjust(top=0.885)
+	# plt.subplots_adjust(top=0.885)
 	# axs[0].set_ylim([-0.01, 2.6])
 	# axs[1].set_ylim(bottom=-0.01)
-	# plt.show()
+	plt.show()
 
 
 
 
 # --------------------------------------------------------------------------------
 # Compare the two gas types together on one plot and examine the flow regimes
-fig, axs = plt.subplots(1,1, figsize=(6,3), dpi=300, sharex=True)
+fig, axs = plt.subplots(1,1, figsize=(6,3), dpi=dpi, sharex=True)
 fig.canvas.set_window_title('Nozzle Performance Metrics')
-fig.suptitle('Throat Reynolds No. for Single Plenum Discharge', y=1)
+fig.suptitle('Time-Logarithmic Comparison of Single Plenum Discharges', y=1)
 axs.set_title('In-space vs. On-ground')
 
 key, value = list(data.items())[0]
@@ -1442,7 +1443,7 @@ axs.tick_params(axis='x', labelsize=6, pad=0)
 axs.xaxis.label.set_size(8)
 axs.set(xlabel=r'Time $(sec)$')
 
-# plt.show()
+plt.show()
 
 
 
@@ -1581,7 +1582,7 @@ axs[1, 1].set(xlabel=r'Nozzle Length, $mm$')
 
 axs[0, 0].set_ylim(bottom=-0.55, top=0.55)
 
-# plt.show()
+plt.show()
 
 
 
