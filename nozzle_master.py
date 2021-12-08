@@ -30,7 +30,7 @@ from nozzle_helperFuncs import *
 ## ---- SIMULATION OPTIONS ----------------------------------------------------------
 ## ==================================================================================
 
-gas_types = ['CO2']	# Gasses to cycle through (currently only CO2 and R134a are available, based on the gas data programmed below)
+gas_types = ['R134a']	# Gasses to cycle through (currently only CO2 and R134a are available, based on the gas data programmed below)
 d_upstream = 2 / 1000			# Upstream "pipe" diameter (really just the valve orifice diameter), units of m (mm / 1000)
 T_wall_init = 293				# Valve brass body wall tempertaure used to evaluate heat transfer conductivity
 half_angle_conv = 110/2			# Half-angle of converging section
@@ -134,7 +134,7 @@ for gas_type in gas_types:
 		L_upstream = 7 / 1000			# Upstream "pipe length" aka path length through valve. Just an estimate.
 		right_limit = 28*((vol * 10**6)/11.2)*(d_star * 1000)/(0.212) # For X-axis time scale
 		visc_loss_param = 4.0			# As determined from NASA TN D-3056 (This varies a lot over Re numbers)
-		k = 1.127  						
+		k = 1.20  						
 		R = 8.314/0.10203  				# Specific gas constant (J/kg-K)
 		T_trip = 169.85  				# Triple point temperature (K)
 		P_trip = 389.56  				# Triple point pressure (Pa)
@@ -1006,7 +1006,7 @@ all_data.to_csv('simulation_data.csv', index=False)
 linewidth = 2
 fontsize = 8
 
-data = 	{ 
+data = 	{  # CHOOSE 4
 			'P_t': 				all_data['P_t'],
 			# 'T_t': 				all_data['T_t'],
 			# 'rho_t':			all_data['rho_t'],
@@ -1041,10 +1041,10 @@ data = 	{
 			# 'c_exit': 		all_data['c_exit'],
 
 			# 'm_gas': 			all_data['m_gas'],
-			# 'mdot': 			all_data['mdot'],
+			'mdot': 			all_data['mdot'],
 			# 'F_mdotv': 		all_data['F_mdotv'], 
 			# 'F_pdiff': 		all_data['F_pdiff'], 
-			'thrust': 		all_data['thrust'],
+			# 'thrust': 		all_data['thrust'],
 			# 'CF_ideal': 	all_data['CF_ideal'],
 			# 'visc_losses': 		all_data['visc_losses'],
 			# 'CF_eff': 		all_data['CF_eff'],
