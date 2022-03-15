@@ -43,14 +43,14 @@ This code integrates over time to estimate the various gas properties (pressure,
 ### Ex. Performance vs. Time
 Nozzle performance is illustrated by showing the time-rate of change of plenum pressure, corresponding thrust (both instantaneous and time-average), and the net impulse generated over the duration of the discharge.
 
-<img src="https://github.com/jwday/Thesis/blob/master/figures/simresults/Sim_Thrust_and_Impulse_CO2.png" alt="Sim CO2 P and Thr" height="400">
+<img src="https://github.com/jwday/nozzleDesign/blob/master/Sim_Thrust_and_Impulse_CO2.png" alt="Sim CO2 P and Thr" height="400">
 
 ### Ex. Thrust Coefficient vs. Time
 One of the many parameters which can be viewed is the Thrust Coefficient, including viscous losses as modeled based on the work by [Spisz et. al from NASA Lewis (Glenn) Research Center](https://ntrs.nasa.gov/api/citations/19650027295/downloads/19650027295.pdf).
 
-<img src="https://github.com/jwday/Thesis/blob/master/figures/simresults/Thrust_Coeff_and_Visc_Losses_CO2.png" alt="Sim CO2 Cf vs Time" height="400">
+<img src="https://github.com/jwday/nozzleDesign/blob/master/figures/simresults/Thrust_Coeff_and_Visc_Losses_CO2.png" alt="Sim CO2 Cf vs Time" height="400">
 
 #### Ex. Density vs. Internal Energy (rho-u) Plot
 The change in density and internal energy was used to determine the phase and estimate the plenum gas quality (X) as it transitioned into the two-phase region. Of course it was later found that despite a phase change potentially taking place, the quality remained very high (>99%) for the duration of the discharge, indicating that the isentropic assumptions which were originally used to model the gas would still remain valid and continue to provide a good estimate.
 
-<img src="https://github.com/jwday/Thesis/blob/master/figures/simresults/rho-u_CO2_Phase-Region-Plot.png" alt="Sim CO2 Phase Change" height="400">
+<img src="https://github.com/jwday/nozzleDesign/blob/master/figures/simresults/rho-u_CO2_Phase-Region-Plot.png" alt="Sim CO2 Phase Change" height="400">
